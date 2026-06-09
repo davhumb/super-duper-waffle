@@ -1,0 +1,855 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>VOID STRIKER</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    background: #000;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    width: 100vw;
+    height: 100vh;
+    overflow: hidden;
+    font-family: 'Courier New', monospace;
+  }
+  #gameWrapper {
+    position: relative;
+    width: min(100vw, calc(100vh * 9 / 16));
+    height: min(100vh, calc(100vw * 16 / 9));
+    background: #000;
+  }
+  canvas {
+    width: 100%;
+    height: 100%;
+    image-rendering: pixelated;
+    image-rendering: crisp-edges;
+    display: block;
+  }
+</style>
+</head>
+<body>
+<div id="gameWrapper">
+  <canvas id="gameCanvas"></canvas>
+</div>
+
+<script>
+// ============================================================
+// SPRITE MAP — ajuste les valeurs x,y,w,h si le découpage
+// n'est pas parfait avec ta spritesheet.
+// Spritesheet attendue : 1024×1024 px, 3 lignes de 256px de haut
+// ============================================================
+const SPRITE_MAP = {
+  ships: {
+    blue:   { x: 0,   y: 0,   w: 256, h: 256 },
+    red:    { x: 256, y: 0,   w: 256, h: 256 },
+    purple: { x: 512, y: 0,   w: 256, h: 256 },
+    yellow: { x: 768, y: 0,   w: 256, h: 256 }
+  },
+  items: {
+    asteroid: { x: 0,   y: 256, w: 256, h: 256 },
+    coin:     { x: 256, y: 256, w: 256, h: 256 },
+    shield:   { x: 512, y: 256, w: 256, h: 256 }
+  },
+  projectiles: {
+    laserTiny:    { x: 30,  y: 530, w: 50,  h: 55  },
+    laserSmall:   { x: 168, y: 520, w: 60,  h: 75  },
+    laserMedium:  { x: 348, y: 510, w: 70,  h: 100 },
+    bulletOrange: { x: 524, y: 508, w: 75,  h: 110 },
+    missileSmall: { x: 672, y: 500, w: 85,  h: 150 },
+    missileLarge: { x: 840, y: 494, w: 100, h: 170 }
+  }
+};
+
+// ============================================================
+// CONFIGURATION DU JEU
+// ============================================================
+const CONFIG = {
+  canvasW: 360,
+  canvasH: 640,
+  playerSpeed: {
+    blue: 220, red: 310, purple: 200, yellow: 150
+  },
+  playerHP: {
+    blue: 3, red: 2, purple: 3, yellow: 5
+  },
+  playerFireRate: {
+    blue: 0.35, red: 0.35, purple: 0.15, yellow: 0.45
+  },
+  enemySpawnBase: 1.8,
+  scrollSpeed: 40,
+  weaponLevels: ['laserTiny','laserSmall','laserMedium','bulletOrange','missileSmall','missileLarge'],
+  weaponDamage: [1, 1, 2, 2, 3, 4],
+  weaponSpeed: [420, 400, 380, 360, 320, 300],
+  weaponScale: [0.3, 0.4, 0.5, 0.55, 0.65, 0.75]
+};
+
+// ============================================================
+// INIT CANVAS
+// ============================================================
+const canvas = document.getElementById('gameCanvas');
+const ctx = canvas.getContext('2d');
+canvas.width = CONFIG.canvasW;
+canvas.height = CONFIG.canvasH;
+
+// ============================================================
+// CHARGEMENT SPRITE SHEET
+// ============================================================
+const spriteImg = new Image();
+spriteImg.src = 'sprites.png';
+let spriteLoaded = false;
+spriteImg.onload = () => { spriteLoaded = true; };
+spriteImg.onerror = () => {
+  // Fallback: dessine des formes colorées si pas de sprite
+  spriteLoaded = false;
+};
+
+function drawSprite(sp, dx, dy, dw, dh, rotation = 0, alpha = 1) {
+  ctx.save();
+  ctx.globalAlpha = alpha;
+  ctx.translate(dx + dw / 2, dy + dh / 2);
+  if (rotation) ctx.rotate(rotation);
+  if (spriteLoaded) {
+    ctx.drawImage(spriteImg, sp.x, sp.y, sp.w, sp.h, -dw / 2, -dh / 2, dw, dh);
+  } else {
+    // Fallback coloré
+    ctx.fillStyle = '#8af';
+    ctx.fillRect(-dw / 2, -dh / 2, dw, dh);
+  }
+  ctx.restore();
+}
+
+// ============================================================
+// ÉTAT DU JEU
+// ============================================================
+let gameState = 'select'; // 'select' | 'playing' | 'gameover'
+let score = 0;
+let hiScore = parseInt(localStorage.getItem('voidStrikerHi') || '0');
+let selectedShip = null;
+let stars = [];
+
+// ============================================================
+// ÉTOILES DE FOND
+// ============================================================
+function initStars() {
+  stars = [];
+  for (let i = 0; i < 80; i++) {
+    stars.push({
+      x: Math.random() * CONFIG.canvasW,
+      y: Math.random() * CONFIG.canvasH,
+      size: Math.random() * 1.5 + 0.5,
+      speed: Math.random() * 60 + 20,
+      bright: Math.random()
+    });
+  }
+}
+initStars();
+
+function updateStars(dt) {
+  stars.forEach(s => {
+    s.y += s.speed * dt;
+    if (s.y > CONFIG.canvasH) {
+      s.y = 0;
+      s.x = Math.random() * CONFIG.canvasW;
+    }
+  });
+}
+
+function drawStars() {
+  stars.forEach(s => {
+    ctx.globalAlpha = 0.4 + s.bright * 0.6;
+    ctx.fillStyle = '#fff';
+    ctx.fillRect(s.x, s.y, s.size, s.size);
+  });
+  ctx.globalAlpha = 1;
+}
+
+// ============================================================
+// ENTITÉS
+// ============================================================
+class Entity {
+  constructor(x, y, w, h) {
+    this.x = x; this.y = y;
+    this.w = w; this.h = h;
+    this.dead = false;
+  }
+  hits(other) {
+    return (
+      this.x < other.x + other.w &&
+      this.x + this.w > other.x &&
+      this.y < other.y + other.h &&
+      this.y + this.h > other.y
+    );
+  }
+}
+
+// --- JOUEUR ---
+class Player extends Entity {
+  constructor(shipType) {
+    const sz = 52;
+    super(CONFIG.canvasW / 2 - sz / 2, CONFIG.canvasH - 100, sz, sz);
+    this.shipType = shipType;
+    this.hp = CONFIG.playerHP[shipType];
+    this.maxHp = this.hp;
+    this.speed = CONFIG.playerSpeed[shipType];
+    this.fireRate = CONFIG.playerFireRate[shipType];
+    this.fireTimer = 0;
+    this.weaponLevel = 0;
+    this.shieldActive = false;
+    this.shieldTimer = 0;
+    this.invincible = false;
+    this.invTimer = 0;
+    this.killCount = 0;
+  }
+
+  update(dt) {
+    this.fireTimer -= dt;
+    if (this.fireTimer <= 0) {
+      this.fireTimer = this.fireRate;
+      this.shoot();
+    }
+    if (this.shieldActive) {
+      this.shieldTimer -= dt;
+      if (this.shieldTimer <= 0) this.shieldActive = false;
+    }
+    if (this.invincible) {
+      this.invTimer -= dt;
+      if (this.invTimer <= 0) this.invincible = false;
+    }
+    // Clamp
+    this.x = Math.max(0, Math.min(CONFIG.canvasW - this.w, this.x));
+    this.y = Math.max(0, Math.min(CONFIG.canvasH - this.h, this.y));
+  }
+
+  shoot() {
+    const lvl = this.weaponLevel;
+    const spKey = CONFIG.weaponLevels[lvl];
+    const sp = SPRITE_MAP.projectiles[spKey];
+    const sc = CONFIG.weaponScale[lvl];
+    const pw = sp.w * sc;
+    const ph = sp.h * sc;
+    const bx = this.x + this.w / 2 - pw / 2;
+    const by = this.y - ph;
+    if (lvl >= 4) {
+      // Double tir
+      projectiles.push(new Projectile(this.x + 4, by, pw * 0.8, ph * 0.8, sp, lvl, 'player'));
+      projectiles.push(new Projectile(this.x + this.w - pw * 0.8 - 4, by, pw * 0.8, ph * 0.8, sp, lvl, 'player'));
+    } else {
+      projectiles.push(new Projectile(bx, by, pw, ph, sp, lvl, 'player'));
+    }
+  }
+
+  hit() {
+    if (this.shieldActive || this.invincible) return;
+    this.hp--;
+    this.invincible = true;
+    this.invTimer = 1.5;
+    spawnExplosion(this.x + this.w / 2, this.y + this.h / 2, '#f88', 6);
+    if (this.hp <= 0) this.dead = true;
+  }
+
+  draw() {
+    if (this.invincible && Math.floor(Date.now() / 100) % 2 === 0) return;
+    const sp = SPRITE_MAP.ships[this.shipType];
+    drawSprite(sp, this.x, this.y, this.w, this.h);
+    if (this.shieldActive) {
+      ctx.save();
+      ctx.strokeStyle = 'rgba(80,180,255,0.7)';
+      ctx.lineWidth = 3;
+      ctx.beginPath();
+      ctx.arc(this.x + this.w / 2, this.y + this.h / 2, this.w * 0.7, 0, Math.PI * 2);
+      ctx.stroke();
+      const spShield = SPRITE_MAP.items.shield;
+      drawSprite(spShield, this.x - 6, this.y - 6, this.w + 12, this.h + 12, 0, 0.5);
+      ctx.restore();
+    }
+  }
+}
+
+// --- PROJECTILE ---
+class Projectile extends Entity {
+  constructor(x, y, w, h, sp, lvl, owner) {
+    super(x, y, w, h);
+    this.sp = sp;
+    this.lvl = lvl;
+    this.owner = owner;
+    this.vy = owner === 'player' ? -CONFIG.weaponSpeed[lvl] : CONFIG.weaponSpeed[0] * 0.5;
+    this.dmg = CONFIG.weaponDamage[lvl];
+  }
+  update(dt) {
+    this.y += this.vy * dt;
+    if (this.y < -this.h || this.y > CONFIG.canvasH + this.h) this.dead = true;
+  }
+  draw() {
+    const rot = this.owner === 'enemy' ? Math.PI : 0;
+    drawSprite(this.sp, this.x, this.y, this.w, this.h, rot);
+  }
+}
+
+// --- ENNEMI ---
+class Enemy extends Entity {
+  constructor(x, y, type) {
+    const sz = type === 'asteroid' ? 44 : 46;
+    super(x, y, sz, sz);
+    this.type = type;
+    this.hp = type === 'asteroid' ? 3 : 2;
+    this.speed = type === 'asteroid'
+      ? (80 + Math.random() * 60)
+      : (60 + Math.random() * 80);
+    this.vx = (Math.random() - 0.5) * 60;
+    this.vy = this.speed;
+    this.fireTimer = 1.5 + Math.random() * 2;
+    this.rot = 0;
+    this.rotSpeed = (Math.random() - 0.5) * 2;
+    this.shipType = type !== 'asteroid'
+      ? ['blue', 'red', 'purple', 'yellow'].filter(s => s !== (player ? player.shipType : 'blue'))[Math.floor(Math.random() * 3)]
+      : null;
+    this.scoreVal = type === 'asteroid' ? 10 : 20;
+  }
+
+  update(dt) {
+    this.y += this.vy * dt;
+    this.x += this.vx * dt;
+    this.rot += this.rotSpeed * dt;
+    if (this.x < -this.w || this.x > CONFIG.canvasW || this.y > CONFIG.canvasH + this.h) {
+      this.dead = true;
+    }
+    if (this.type !== 'asteroid') {
+      this.fireTimer -= dt;
+      if (this.fireTimer <= 0) {
+        this.fireTimer = 2 + Math.random() * 2;
+        const sp = SPRITE_MAP.projectiles.laserTiny;
+        const pw = sp.w * 0.3;
+        const ph = sp.h * 0.3;
+        projectiles.push(new Projectile(this.x + this.w / 2 - pw / 2, this.y + this.h, pw, ph, sp, 0, 'enemy'));
+      }
+    }
+  }
+
+  draw() {
+    if (this.type === 'asteroid') {
+      drawSprite(SPRITE_MAP.items.asteroid, this.x, this.y, this.w, this.h, this.rot);
+    } else {
+      drawSprite(SPRITE_MAP.ships[this.shipType], this.x, this.y, this.w, this.h, Math.PI);
+    }
+  }
+
+  takeDamage(dmg) {
+    this.hp -= dmg;
+    if (this.hp <= 0) {
+      this.dead = true;
+      spawnExplosion(this.x + this.w / 2, this.y + this.h / 2,
+        this.type === 'asteroid' ? '#c97' : '#fa6', 12);
+      score += this.scoreVal;
+      if (player) {
+        player.killCount++;
+        if (player.killCount % 8 === 0 && player.weaponLevel < 5) {
+          player.weaponLevel++;
+        }
+      }
+      // Drop bonus ?
+      if (Math.random() < 0.15) spawnPowerup(this.x + this.w / 2, this.y + this.h / 2);
+    }
+  }
+}
+
+// --- POWERUP ---
+class PowerUp extends Entity {
+  constructor(x, y, type) {
+    const sz = 28;
+    super(x - sz / 2, y - sz / 2, sz, sz);
+    this.type = type; // 'coin' | 'shield'
+    this.vy = 60;
+  }
+  update(dt) {
+    this.y += this.vy * dt;
+    if (this.y > CONFIG.canvasH + this.h) this.dead = true;
+  }
+  draw() {
+    const sp = this.type === 'shield' ? SPRITE_MAP.items.shield : SPRITE_MAP.items.coin;
+    drawSprite(sp, this.x, this.y, this.w, this.h);
+  }
+}
+
+function spawnPowerup(x, y) {
+  const t = Math.random() < 0.4 ? 'shield' : 'coin';
+  powerups.push(new PowerUp(x, y, t));
+}
+
+// --- PARTICULES ---
+class Particle {
+  constructor(x, y, color) {
+    this.x = x; this.y = y;
+    this.color = color;
+    this.vx = (Math.random() - 0.5) * 180;
+    this.vy = (Math.random() - 0.5) * 180;
+    this.life = 0.5 + Math.random() * 0.4;
+    this.maxLife = this.life;
+    this.size = Math.floor(Math.random() * 4) + 2;
+  }
+  update(dt) {
+    this.x += this.vx * dt;
+    this.y += this.vy * dt;
+    this.life -= dt;
+    if (this.life <= 0) this.dead = true;
+  }
+  draw() {
+    ctx.globalAlpha = this.life / this.maxLife;
+    ctx.fillStyle = this.color;
+    ctx.fillRect(Math.floor(this.x), Math.floor(this.y), this.size, this.size);
+    ctx.globalAlpha = 1;
+  }
+}
+
+function spawnExplosion(x, y, color, count) {
+  for (let i = 0; i < count; i++) particles.push(new Particle(x, y, color));
+}
+
+// ============================================================
+// LISTES D'ENTITÉS
+// ============================================================
+let player = null;
+let enemies = [];
+let projectiles = [];
+let particles = [];
+let powerups = [];
+let enemySpawnTimer = 0;
+let waveTimer = 0;
+
+// ============================================================
+// CONTRÔLES
+// ============================================================
+const keys = {};
+let touchX = null, touchY = null, touching = false;
+
+window.addEventListener('keydown', e => { keys[e.key] = true; });
+window.addEventListener('keyup', e => { keys[e.key] = false; });
+
+canvas.addEventListener('touchstart', e => {
+  e.preventDefault();
+  const rect = canvas.getBoundingClientRect();
+  const scaleX = CONFIG.canvasW / rect.width;
+  const scaleY = CONFIG.canvasH / rect.height;
+  const t = e.touches[0];
+  touchX = (t.clientX - rect.left) * scaleX;
+  touchY = (t.clientY - rect.top) * scaleY;
+  touching = true;
+  handleTap(touchX, touchY);
+}, { passive: false });
+
+canvas.addEventListener('touchmove', e => {
+  e.preventDefault();
+  const rect = canvas.getBoundingClientRect();
+  const scaleX = CONFIG.canvasW / rect.width;
+  const scaleY = CONFIG.canvasH / rect.height;
+  const t = e.touches[0];
+  touchX = (t.clientX - rect.left) * scaleX;
+  touchY = (t.clientY - rect.top) * scaleY;
+}, { passive: false });
+
+canvas.addEventListener('touchend', e => {
+  e.preventDefault();
+  touching = false;
+}, { passive: false });
+
+canvas.addEventListener('click', e => {
+  const rect = canvas.getBoundingClientRect();
+  const scaleX = CONFIG.canvasW / rect.width;
+  const scaleY = CONFIG.canvasH / rect.height;
+  handleTap((e.clientX - rect.left) * scaleX, (e.clientY - rect.top) * scaleY);
+});
+
+function handleTap(x, y) {
+  if (gameState === 'select') {
+    checkShipSelect(x, y);
+  } else if (gameState === 'gameover') {
+    startGame(selectedShip);
+  }
+}
+
+// ============================================================
+// SÉLECTION DU VAISSEAU
+// ============================================================
+const shipOrder = ['blue', 'red', 'purple', 'yellow'];
+const shipNames = { blue: 'BLEU', red: 'ROUGE', purple: 'VIOLET', yellow: 'JAUNE' };
+const shipDesc = {
+  blue:   'ÉQUILIBRÉ\nVitesse: ★★★☆☆\nPV: ★★★☆☆\nCadence: ★★★☆☆',
+  red:    'RAPIDE\nVitesse: ★★★★★\nPV: ★★☆☆☆\nCadence: ★★★☆☆',
+  purple: 'CADENCE\nVitesse: ★★★☆☆\nPV: ★★★☆☆\nCadence: ★★★★★',
+  yellow: 'LOURD\nVitesse: ★★☆☆☆\nPV: ★★★★★\nCadence: ★★☆☆☆'
+};
+
+let hoveredShip = null;
+let selectAnim = 0;
+
+canvas.addEventListener('mousemove', e => {
+  if (gameState !== 'select') return;
+  const rect = canvas.getBoundingClientRect();
+  const scaleX = CONFIG.canvasW / rect.width;
+  const scaleY = CONFIG.canvasH / rect.height;
+  const mx = (e.clientX - rect.left) * scaleX;
+  const my = (e.clientY - rect.top) * scaleY;
+  hoveredShip = null;
+  shipOrder.forEach((s, i) => {
+    const pos = getShipSelectPos(i);
+    if (mx > pos.x && mx < pos.x + pos.w && my > pos.y && my < pos.y + pos.h) {
+      hoveredShip = s;
+    }
+  });
+});
+
+function getShipSelectPos(i) {
+  const cols = 2;
+  const row = Math.floor(i / cols);
+  const col = i % cols;
+  const w = 80, h = 80, gx = 24, gy = 20;
+  const startX = (CONFIG.canvasW - (cols * w + (cols - 1) * gx)) / 2;
+  const startY = 200;
+  return {
+    x: startX + col * (w + gx),
+    y: startY + row * (h + gy),
+    w, h
+  };
+}
+
+function checkShipSelect(x, y) {
+  shipOrder.forEach((s, i) => {
+    const pos = getShipSelectPos(i);
+    if (x > pos.x && x < pos.x + pos.w && y > pos.y && y < pos.y + pos.h) {
+      startGame(s);
+    }
+  });
+}
+
+function drawSelectScreen(dt) {
+  selectAnim += dt;
+  // Fond
+  ctx.fillStyle = '#000010';
+  ctx.fillRect(0, 0, CONFIG.canvasW, CONFIG.canvasH);
+  drawStars();
+
+  // Titre
+  ctx.textAlign = 'center';
+  const pulse = Math.sin(selectAnim * 2) * 0.15 + 0.85;
+  ctx.globalAlpha = pulse;
+  ctx.fillStyle = '#7df';
+  ctx.font = 'bold 36px "Courier New"';
+  ctx.fillText('VOID STRIKER', CONFIG.canvasW / 2, 70);
+  ctx.globalAlpha = 1;
+
+  ctx.fillStyle = '#888';
+  ctx.font = '11px "Courier New"';
+  ctx.fillText('— CHOISISSEZ VOTRE VAISSEAU —', CONFIG.canvasW / 2, 100);
+
+  // Sous-titre score
+  ctx.fillStyle = '#fa0';
+  ctx.font = '11px "Courier New"';
+  ctx.fillText(`HI-SCORE: ${hiScore}`, CONFIG.canvasW / 2, 120);
+
+  // Vaisseaux
+  shipOrder.forEach((s, i) => {
+    const pos = getShipSelectPos(i);
+    const isHover = hoveredShip === s;
+    const sp = SPRITE_MAP.ships[s];
+
+    // Box
+    ctx.strokeStyle = isHover ? '#7df' : '#334';
+    ctx.lineWidth = isHover ? 2 : 1;
+    ctx.fillStyle = isHover ? 'rgba(100,200,255,0.08)' : 'rgba(0,0,60,0.5)';
+    roundRect(ctx, pos.x - 6, pos.y - 6, pos.w + 12, pos.h + 40, 6);
+    ctx.fill();
+    ctx.stroke();
+
+    // Sprite
+    const bob = isHover ? Math.sin(selectAnim * 4) * 3 : 0;
+    drawSprite(sp, pos.x, pos.y + bob, pos.w, pos.h);
+
+    // Nom
+    ctx.fillStyle = isHover ? '#7df' : '#aaa';
+    ctx.font = `bold ${isHover ? 12 : 11}px "Courier New"`;
+    ctx.textAlign = 'center';
+    ctx.fillText(shipNames[s], pos.x + pos.w / 2, pos.y + pos.h + 18);
+  });
+
+  // Détails vaisseau survolé
+  if (hoveredShip) {
+    const lines = shipDesc[hoveredShip].split('\n');
+    const bx = 20, by = 420, bw = CONFIG.canvasW - 40, bh = lines.length * 18 + 20;
+    ctx.fillStyle = 'rgba(0,10,40,0.9)';
+    ctx.strokeStyle = '#7df';
+    ctx.lineWidth = 1;
+    roundRect(ctx, bx, by, bw, bh, 6);
+    ctx.fill(); ctx.stroke();
+    ctx.fillStyle = '#cef';
+    ctx.font = '11px "Courier New"';
+    ctx.textAlign = 'left';
+    lines.forEach((l, idx) => {
+      ctx.fillText(l, bx + 12, by + 18 + idx * 18);
+    });
+  }
+
+  ctx.textAlign = 'left';
+}
+
+function roundRect(ctx, x, y, w, h, r) {
+  ctx.beginPath();
+  ctx.moveTo(x + r, y);
+  ctx.lineTo(x + w - r, y);
+  ctx.arcTo(x + w, y, x + w, y + r, r);
+  ctx.lineTo(x + w, y + h - r);
+  ctx.arcTo(x + w, y + h, x + w - r, y + h, r);
+  ctx.lineTo(x + r, y + h);
+  ctx.arcTo(x, y + h, x, y + h - r, r);
+  ctx.lineTo(x, y + r);
+  ctx.arcTo(x, y, x + r, y, r);
+  ctx.closePath();
+}
+
+// ============================================================
+// DÉMARRER LE JEU
+// ============================================================
+function startGame(shipType) {
+  selectedShip = shipType;
+  player = new Player(shipType);
+  enemies = [];
+  projectiles = [];
+  particles = [];
+  powerups = [];
+  score = 0;
+  enemySpawnTimer = 0;
+  waveTimer = 0;
+  gameState = 'playing';
+}
+
+// ============================================================
+// BOUCLE DE JEU
+// ============================================================
+let lastTime = 0;
+
+function gameLoop(timestamp) {
+  const dt = Math.min((timestamp - lastTime) / 1000, 0.05);
+  lastTime = timestamp;
+
+  ctx.clearRect(0, 0, CONFIG.canvasW, CONFIG.canvasH);
+
+  if (gameState === 'select') {
+    updateStars(dt);
+    drawSelectScreen(dt);
+  } else if (gameState === 'playing') {
+    updatePlaying(dt);
+    drawPlaying();
+  } else if (gameState === 'gameover') {
+    updateStars(dt);
+    drawGameOver();
+  }
+
+  requestAnimationFrame(gameLoop);
+}
+
+// ============================================================
+// UPDATE PLAYING
+// ============================================================
+function updatePlaying(dt) {
+  updateStars(dt * 0.5);
+  waveTimer += dt;
+
+  // Mouvement joueur
+  if (player && !player.dead) {
+    if (touching && touchX !== null) {
+      const targetX = touchX - player.w / 2;
+      const targetY = touchY - player.h / 2 - 30; // décalage finger
+      const dx = targetX - player.x;
+      const dy = targetY - player.y;
+      const dist = Math.sqrt(dx * dx + dy * dy);
+      const spd = player.speed;
+      if (dist > 2) {
+        player.x += (dx / dist) * Math.min(dist, spd * dt * 3);
+        player.y += (dy / dist) * Math.min(dist, spd * dt * 3);
+      }
+    } else {
+      if (keys['ArrowLeft'] || keys['q'] || keys['Q']) player.x -= player.speed * dt;
+      if (keys['ArrowRight'] || keys['d'] || keys['D']) player.x += player.speed * dt;
+      if (keys['ArrowUp'] || keys['z'] || keys['Z']) player.y -= player.speed * dt;
+      if (keys['ArrowDown'] || keys['s'] || keys['S']) player.y += player.speed * dt;
+    }
+    player.update(dt);
+  }
+
+  // Spawn ennemis
+  enemySpawnTimer -= dt;
+  const spawnRate = Math.max(0.5, CONFIG.enemySpawnBase - waveTimer * 0.05);
+  if (enemySpawnTimer <= 0) {
+    enemySpawnTimer = spawnRate;
+    const t = Math.random() < 0.4 ? 'asteroid' : 'ship';
+    const ex = Math.random() * (CONFIG.canvasW - 50);
+    enemies.push(new Enemy(ex, -60, t));
+  }
+
+  // Update
+  enemies.forEach(e => e.update(dt));
+  projectiles.forEach(p => p.update(dt));
+  particles.forEach(p => p.update(dt));
+  powerups.forEach(p => p.update(dt));
+
+  // Collisions projectiles → ennemis
+  projectiles.filter(p => p.owner === 'player' && !p.dead).forEach(proj => {
+    enemies.filter(e => !e.dead).forEach(e => {
+      if (proj.hits(e)) {
+        proj.dead = true;
+        e.takeDamage(proj.dmg);
+      }
+    });
+  });
+
+  // Collisions ennemis → joueur
+  if (player && !player.dead) {
+    enemies.filter(e => !e.dead).forEach(e => {
+      if (player.hits(e)) {
+        e.dead = true;
+        player.hit();
+        spawnExplosion(e.x + e.w / 2, e.y + e.h / 2, '#fa6', 10);
+      }
+    });
+
+    // Collisions projectiles ennemis → joueur
+    projectiles.filter(p => p.owner === 'enemy' && !p.dead).forEach(proj => {
+      if (player.hits(proj)) {
+        proj.dead = true;
+        player.hit();
+      }
+    });
+
+    // Collecte bonus
+    powerups.filter(p => !p.dead).forEach(pu => {
+      if (player.hits(pu)) {
+        pu.dead = true;
+        if (pu.type === 'shield') {
+          player.shieldActive = true;
+          player.shieldTimer = 5;
+        } else {
+          score += 50;
+        }
+      }
+    });
+  }
+
+  // Nettoyage
+  enemies = enemies.filter(e => !e.dead);
+  projectiles = projectiles.filter(p => !p.dead);
+  particles = particles.filter(p => !p.dead);
+  powerups = powerups.filter(p => !p.dead);
+
+  // Game over
+  if (player && player.dead) {
+    if (score > hiScore) {
+      hiScore = score;
+      localStorage.setItem('voidStrikerHi', hiScore);
+    }
+    gameState = 'gameover';
+  }
+}
+
+// ============================================================
+// DRAW PLAYING
+// ============================================================
+function drawPlaying() {
+  ctx.fillStyle = '#000010';
+  ctx.fillRect(0, 0, CONFIG.canvasW, CONFIG.canvasH);
+  drawStars();
+
+  powerups.forEach(p => p.draw());
+  enemies.forEach(e => e.draw());
+  projectiles.forEach(p => p.draw());
+  particles.forEach(p => p.draw());
+  if (player && !player.dead) player.draw();
+
+  // HUD
+  drawHUD();
+}
+
+function drawHUD() {
+  // Score
+  ctx.fillStyle = '#7df';
+  ctx.font = 'bold 14px "Courier New"';
+  ctx.textAlign = 'left';
+  ctx.fillText(`${score}`, 10, 20);
+
+  ctx.fillStyle = '#fa0';
+  ctx.font = '10px "Courier New"';
+  ctx.fillText(`HI ${hiScore}`, 10, 34);
+
+  // PV
+  if (player) {
+    ctx.textAlign = 'right';
+    ctx.fillStyle = '#f55';
+    ctx.font = '12px "Courier New"';
+    const hearts = '♥'.repeat(player.hp) + '♡'.repeat(Math.max(0, player.maxHp - player.hp));
+    ctx.fillText(hearts, CONFIG.canvasW - 10, 20);
+
+    // Niveau arme
+    ctx.fillStyle = '#6f9';
+    ctx.font = '10px "Courier New"';
+    ctx.fillText(`WPN Lv.${player.weaponLevel + 1}`, CONFIG.canvasW - 10, 34);
+  }
+
+  ctx.textAlign = 'left';
+}
+
+// ============================================================
+// GAME OVER
+// ============================================================
+let goAnim = 0;
+
+function drawGameOver() {
+  goAnim += 0.016;
+  ctx.fillStyle = '#000010';
+  ctx.fillRect(0, 0, CONFIG.canvasW, CONFIG.canvasH);
+  drawStars();
+
+  ctx.textAlign = 'center';
+
+  // Titre
+  const pulse = Math.sin(goAnim * 3) * 0.2 + 0.8;
+  ctx.globalAlpha = pulse;
+  ctx.fillStyle = '#f44';
+  ctx.font = 'bold 40px "Courier New"';
+  ctx.fillText('GAME OVER', CONFIG.canvasW / 2, 200);
+  ctx.globalAlpha = 1;
+
+  ctx.fillStyle = '#7df';
+  ctx.font = 'bold 18px "Courier New"';
+  ctx.fillText(`SCORE: ${score}`, CONFIG.canvasW / 2, 260);
+
+  if (score >= hiScore) {
+    ctx.fillStyle = '#fa0';
+    ctx.font = '13px "Courier New"';
+    ctx.fillText('✦ NOUVEAU RECORD ✦', CONFIG.canvasW / 2, 290);
+  }
+
+  ctx.fillStyle = '#888';
+  ctx.font = '12px "Courier New"';
+  ctx.fillText(`HI-SCORE: ${hiScore}`, CONFIG.canvasW / 2, 315);
+
+  const blink = Math.floor(goAnim * 2) % 2 === 0;
+  if (blink) {
+    ctx.fillStyle = '#aef';
+    ctx.font = '13px "Courier New"';
+    ctx.fillText('[ TOUCHER POUR REJOUER ]', CONFIG.canvasW / 2, 380);
+  }
+
+  ctx.textAlign = 'left';
+}
+
+// ============================================================
+// LANCEMENT
+// ============================================================
+requestAnimationFrame(ts => {
+  lastTime = ts;
+  requestAnimationFrame(gameLoop);
+});
+</script>
+</body>
+</html>
