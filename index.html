@@ -170,11 +170,12 @@ html,body{width:100%;height:100%;background:var(--bg);overflow:hidden;font-famil
 const canvas = document.getElementById('cvs');
 const ctx    = canvas.getContext('2d');
 const COLS=10, ROWS=18, BUFFER=2;
-// On calcule CELL dynamiquement pour remplir l'écran
-const GRID_TOP=46; // espace HUD
-const TIMER_H=12;  // barre timer en bas
+const GRID_TOP=46;
+const TIMER_H=14;
 function calcCell(){
-  return Math.floor((Math.min(window.innerHeight, screen.height) - GRID_TOP - TIMER_H - 8) / ROWS);
+  const cellH = Math.floor((window.innerHeight - GRID_TOP - TIMER_H - 4) / ROWS);
+  const cellW = Math.floor(window.innerWidth / COLS);
+  return Math.min(cellH, cellW);
 }
 let CELL=calcCell();
 let GRID_W=COLS*CELL, GRID_H=ROWS*CELL;
@@ -418,25 +419,32 @@ function spawnFx(x,y,color,n=10){
 
 // ── Succès ──────────────────────────────────────────────────
 const ACHIEVEMENTS=[
-  {id:'first',  label:'🎮 PREMIER BLOC',   desc:'Poser son premier bloc',          cond:()=>totalPieces>=1},
-  {id:'line1',  label:'✨ PREMIÈRE LIGNE', desc:'Effacer une ligne',               cond:()=>lines>=1},
-  {id:'tetris', label:'💎 TETRIS!',        desc:'Effacer 4 lignes d\'un coup',     cond:()=>bestClear>=4},
-  {id:'score1', label:'⭐ MILLIONNAIRE',   desc:'Atteindre 1000 pts',              cond:()=>score>=1000},
-  {id:'score2', label:'🏆 HIGH ROLLER',    desc:'Atteindre 5000 pts',              cond:()=>score>=5000},
-  {id:'level5', label:'⚡ NIVEAU 5',       desc:'Atteindre le niveau 5',           cond:()=>currentLevel>=5},
-  {id:'cube',   label:'💥 CUBE FIGHTER',   desc:'Survivre 10 cubes',               cond:()=>cubesDodged>=10},
-  {id:'speed',  label:'🚀 SPEED RUN',      desc:'Effacer 10 lignes niveau 3+',     cond:()=>lines>=10&&currentLevel>=3},
+  {id:'first',   label:'🎮 PREMIER BLOC',    cond:()=>totalPieces>=1},
+  {id:'line1',   label:'✨ PREMIÈRE LIGNE',  cond:()=>lines>=1},
+  {id:'double',  label:'⚡ DOUBLE !',        cond:()=>bestClear>=2},
+  {id:'triple',  label:'🔥 TRIPLE !!!',      cond:()=>bestClear>=3},
+  {id:'tetris',  label:'💎 WAFFLE TETRIS!',  cond:()=>bestClear>=4},
+  {id:'combo3',  label:'🌀 COMBO ×3',        cond:()=>bestCombo>=3},
+  {id:'combo5',  label:'💫 COMBO ×5',        cond:()=>bestCombo>=5},
+  {id:'score1',  label:'⭐ 1000 PTS',        cond:()=>score>=1000},
+  {id:'score2',  label:'🏆 5000 PTS',        cond:()=>score>=5000},
+  {id:'score3',  label:'👑 10000 PTS',       cond:()=>score>=10000},
+  {id:'level5',  label:'⚡ NIVEAU 5',        cond:()=>currentLevel>=5},
+  {id:'level10', label:'🚀 NIVEAU 10',       cond:()=>currentLevel>=10},
+  {id:'cube',    label:'💥 CUBE FIGHTER',    cond:()=>cubesDodged>=10},
+  {id:'speed',   label:'⏱ SPEED RUN',       cond:()=>lines>=10&&currentLevel>=3},
 ];
-let unlockedAch=new Set(JSON.parse(localStorage.getItem('td_ach')||'[]'));
+let unlockedAch=new Set(JSON.parse(localStorage.getItem('sdw_ach')||'[]'));
 let sessionAch=new Set();
-let totalPieces=0, bestClear=0, cubesDodged=0;
+let totalPieces=0, bestClear=0, cubesDodged=0, bestCombo=0;
+let lineCombo=0; // combo de lignes consécutives
 
 function checkAchievements(){
   for(const a of ACHIEVEMENTS){
     if(!unlockedAch.has(a.id) && a.cond()){
       unlockedAch.add(a.id);
       sessionAch.add(a.id);
-      localStorage.setItem('td_ach', JSON.stringify([...unlockedAch]));
+      localStorage.setItem('sdw_ach', JSON.stringify([...unlockedAch]));
       showAchievement(a);
       devLog(`🏅 Succès: ${a.label}`,'lw');
     }
@@ -740,15 +748,27 @@ function doLock(){
 
   const fullRows=findFullLines();
   if(fullRows.length>0){
-    triggerLineEffect(fullRows); // effet visuel AVANT d'effacer
+    triggerLineEffect(fullRows);
     const cleared=eraseLines(fullRows);
     bestClear=Math.max(bestClear,cleared);
     lines+=cleared;
-    const bonus=[0,100,300,500,800][Math.min(cleared,4)]*currentLevel;
-    score+=bonus;
-    showFlash(['','LINE!','DOUBLE!','TRIPLE!','TETRIS!!'][Math.min(cleared,4)],C.am);
+    lineCombo++;
+    bestCombo=Math.max(bestCombo,lineCombo);
+
+    // Scoring : 100 / 200 / 500 selon lignes effacées
+    const baseBonus=[0,100,200,200,500][Math.min(cleared,4)];
+    // Bonus combo : +50 par combo consécutif
+    const comboBonus = lineCombo > 1 ? (lineCombo-1)*50 : 0;
+    const total = (baseBonus + comboBonus) * currentLevel;
+    score += total;
+
+    // Message flash
+    const lineMsg=['','LINE!','DOUBLE! +200','TRIPLE! +200','WAFFLE TETRIS!! +500'][Math.min(cleared,4)];
+    const comboMsg = lineCombo>=2 ? `  COMBO ×${lineCombo}` : '';
+    showFlash(lineMsg + comboMsg, lineCombo>=3 ? '#ff2d9b' : C.am);
     sndLineClear(cleared);
   } else {
+    lineCombo=0; // reset combo si aucune ligne
     score+=10*currentLevel;
   }
 
@@ -1095,7 +1115,7 @@ function startGame(){
   score=0; lines=0; currentLevel=1; speedMult=1.0;
   stopMusic(); // éviter l'empilement audio si on rejoue rapidement
   cubeEnabled=true; projAccum=0; godMode=false;
-  totalPieces=0; bestClear=0; cubesDodged=0;
+  totalPieces=0; bestClear=0; cubesDodged=0; bestCombo=0; lineCombo=0;
   sessionAch.clear();
   projs.length=0; particles.length=0; lineEffects.length=0;
   resetGrid();
@@ -1289,32 +1309,37 @@ function toggleMute(){
 // ── Leaderboard Supabase ─────────────────────────────────────
 const SB_URL = 'https://oifughooyyhboiyufopz.supabase.co';
 const SB_KEY = 'sb_publishable_0MQodcM5UV9qfuqyw1yjRg_TgKGSy94';
+const SB_HEADERS = {
+  'Content-Type':  'application/json',
+  'apikey':        SB_KEY,
+  'Authorization': `Bearer ${SB_KEY}`,
+  'X-Client-Info': 'supa-doopa-waffles',
+};
 
 async function submitScore(name, score, lines, level){
   try{
     const res = await fetch(`${SB_URL}/rest/v1/scores`, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'apikey': SB_KEY,
-        'Authorization': `Bearer ${SB_KEY}`,
-        'Prefer': 'return=minimal',
-      },
-      body: JSON.stringify({ name: name.toUpperCase(), score, lines, level }),
+      headers: { ...SB_HEADERS, 'Prefer': 'return=minimal' },
+      body: JSON.stringify({ name: name.toUpperCase().slice(0,12), score, lines, level }),
     });
+    if(!res.ok){
+      const err = await res.text();
+      devLog(`Supabase error ${res.status}: ${err}`, 'le');
+    }
     return res.ok;
-  } catch(e){ return false; }
+  } catch(e){ devLog('Submit error: '+e.message,'le'); return false; }
 }
 
 async function fetchScores(){
   try{
     const res = await fetch(
       `${SB_URL}/rest/v1/scores?order=score.desc&limit=10`,
-      { headers: { 'apikey': SB_KEY, 'Authorization': `Bearer ${SB_KEY}` } }
+      { headers: SB_HEADERS }
     );
-    if(!res.ok) return null;
+    if(!res.ok){ devLog('Fetch scores error: '+res.status,'le'); return null; }
     return await res.json();
-  } catch(e){ return null; }
+  } catch(e){ devLog('Fetch error: '+e.message,'le'); return null; }
 }
 
 let lbFromScreen = 'title'; // track d'où on vient pour le retour
