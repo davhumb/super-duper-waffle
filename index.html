@@ -75,7 +75,10 @@ html,body{width:100%;height:100%;background:var(--bg);overflow:hidden;font-famil
   <div id="hud">
     <div class="hb"><div class="hl">Score</div><div class="hv" id="hS">0</div></div>
     <div class="hb" style="text-align:center"><div class="hl">Level</div><div class="hv" id="hL">1</div></div>
-    <div class="hb" style="text-align:right"><div class="hl">Lines</div><div class="hv" id="hLn">0</div></div>
+    <div class="hb" style="text-align:right;display:flex;align-items:center;gap:6px">
+      <div><div class="hl">Lines</div><div class="hv" id="hLn">0</div></div>
+      <button id="btnMute" onclick="toggleMute()" style="background:none;border:1px solid #3a3a5c;color:#aabbff;font-size:14px;padding:2px 6px;cursor:pointer;border-radius:3px;line-height:1;-webkit-tap-highlight-color:transparent">🔊</button>
+    </div>
   </div>
   <div id="flash"></div>
   <div id="achiev"></div>
@@ -184,6 +187,9 @@ function resize(){
   scale=Math.min(window.innerWidth/DW, window.innerHeight/DH);
   canvas.width=Math.floor(DW*scale); canvas.height=Math.floor(DH*scale);
   ctx.setTransform(scale,0,0,scale,0,0);
+  // Fix: mettre à jour cellSize des projectiles pièce après resize
+  for(const p of projs){ if(p.type==='piece') p.cellSize=CELL; }
+  if(nebulaCanvas){ nebulaCanvas=null; } // régénérer la nébuleuse
 }
 resize(); window.addEventListener('resize',resize);
 
@@ -283,10 +289,18 @@ function spawnPiece(){
   piece.floatRow=-1.5;
   piece.vy=0;
   piece.locked=false;
-  // Timer réduit avec les niveaux (min 5s)
   piece.pieceTimer = Math.max(8.0, PIECE_TIME_BASE - (currentLevel - 1) * 0.8);
   piece.invincible=true;
   piece.invTimer=1.0;
+  // Si un projectile chevauche déjà la zone de spawn → prolonger l'invincibilité
+  for(const p of projs){
+    const pw = p.type==='cube' ? p.size : (Math.max(...p.cells.map(c=>c[0]))+1)*p.cellSize;
+    const ph = p.type==='cube' ? p.size : (Math.max(...p.cells.map(c=>c[1]))+1)*p.cellSize;
+    const spawnY = GRID_TOP + (-1.5 - BUFFER) * CELL;
+    if(p.x < GRID_W && p.x+pw > 0 && p.y < spawnY+CELL*2 && p.y+ph > spawnY-CELL){
+      piece.invTimer = Math.max(piece.invTimer, 2.0); // prolonger à 2s
+    }
+  }
 }
 
 // ── Physique ────────────────────────────────────────────────
@@ -1076,6 +1090,7 @@ function gameLoop(ts){
 // ── Flow ─────────────────────────────────────────────────────
 function startGame(){
   score=0; lines=0; currentLevel=1; speedMult=1.0;
+  stopMusic(); // éviter l'empilement audio si on rejoue rapidement
   cubeEnabled=true; projAccum=0; godMode=false;
   totalPieces=0; bestClear=0; cubesDodged=0;
   sessionAch.clear();
@@ -1263,6 +1278,11 @@ function devTog(flag){
   devLog(flag+':'+(dbg[flag]?'ON':'OFF'),'ls');
 }
 
+function toggleMute(){
+  if(musicOn){ stopMusic(); document.getElementById('btnMute').textContent='🔇'; }
+  else { initAudio(); if(audioCtx) audioCtx.resume().then(startMusic); document.getElementById('btnMute').textContent='🔊'; }
+}
+
 // ── Leaderboard Supabase ─────────────────────────────────────
 const SB_URL = 'https://oifughooyyhboiyufopz.supabase.co';
 const SB_KEY = 'sb_publishable_0MQodcM5UV9qfuqyw1yjRg_TgKGSy94';
@@ -1294,7 +1314,10 @@ async function fetchScores(){
   } catch(e){ return null; }
 }
 
+let lbFromScreen = 'title'; // track d'où on vient pour le retour
+
 function showLeaderboard(fromScreen){
+  lbFromScreen = fromScreen || 'title';
   document.getElementById('sTit').classList.add('hidden');
   document.getElementById('sOver').classList.add('hidden');
   document.getElementById('sLB').classList.remove('hidden');
@@ -1316,7 +1339,6 @@ function showLeaderboard(fromScreen){
         <span style="color:#8888bb;font-size:10px">Lv.${s.level}</span>
       </div>`).join('');
   });
-  document.getElementById('lbFrom') && (document.getElementById('lbFrom').value = fromScreen||'title');
 }
 
 // ── Boutons ──────────────────────────────────────────────────
@@ -1332,7 +1354,11 @@ bindBtn('btnLB', ()=>showLeaderboard('title'));
 bindBtn('btnSeeScores', ()=>showLeaderboard('over'));
 bindBtn('btnLBBack', ()=>{
   document.getElementById('sLB').classList.add('hidden');
-  document.getElementById('sTit').classList.remove('hidden');
+  if(lbFromScreen === 'over'){
+    document.getElementById('sOver').classList.remove('hidden');
+  } else {
+    document.getElementById('sTit').classList.remove('hidden');
+  }
 });
 bindBtn('btnSubmit', async ()=>{
   const nameEl = document.getElementById('playerName');
