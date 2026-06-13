@@ -2,7 +2,7 @@
 <html lang="fr">
 <head>
 <!--
-  TETRADRIFT v5 — Tetris × Flappy Bird
+  SUPA DOOPA WAFFLES v5 — Tetris × Flappy Bird
   Celluloïd Scalpel Production
 
   PHYSIQUE : toutes vitesses en unités/SECONDE. dt = secondes (~0.016)
@@ -12,7 +12,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 <meta name="mobile-web-app-capable" content="yes">
-<title>TETRADRIFT</title>
+<title>Supa Doopa Waffles</title>
 <style>
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
 :root{--bg:#0a0a0f;--cy:#00f5ff;--mg:#ff006e;--am:#ffd60a;--vi:#7b2fff;--gn:#39ff14;--wh:#ffffff;--gr:#8888bb}
@@ -85,7 +85,7 @@ html,body{width:100%;height:100%;background:var(--bg);overflow:hidden;font-famil
 
   <!-- TITLE -->
   <div class="screen" id="sTit">
-    <div class="st">TETRA<br>DRIFT</div>
+    <div class="st">SUPA DOOPA<br>WAFFLES</div>
     <div class="ss">Tetris × Flappy Bird</div>
     <div class="sp" style="color:#ff2d9b;text-shadow:0 0 10px #ff2d9b,0 0 25px #ff2d9b,0 0 50px #ff2d9b;letter-spacing:4px;font-size:9px;">Celluloïd Scalpel Production</div>
     <div class="sd">Tap pour voler · Double-tap pour pivoter<br>Swipe G/D pour déplacer<br>1 vie · Les cubes = game over !</div>
@@ -116,7 +116,7 @@ html,body{width:100%;height:100%;background:var(--bg);overflow:hidden;font-famil
   <!-- LEADERBOARD -->
   <div class="screen hidden" id="sLB">
     <div style="font-size:13px;letter-spacing:5px;color:#cc44ff;margin-bottom:4px;font-weight:900;text-shadow:0 0 12px #cc44ff">🏆 LEADERBOARD</div>
-    <div style="font-size:8px;letter-spacing:3px;color:#8888bb;margin-bottom:16px">TETRADRIFT — TOP 10</div>
+    <div style="font-size:8px;letter-spacing:3px;color:#8888bb;margin-bottom:16px">SUPA DOOPA WAFFLES — TOP 10</div>
     <div id="lbList" style="width:100%;max-width:300px;margin-bottom:20px;min-height:180px;display:flex;flex-direction:column;gap:4px"></div>
     <button class="btn" id="btnLBBack" style="font-size:12px;padding:10px 24px">← RETOUR</button>
   </div>
@@ -124,7 +124,7 @@ html,body{width:100%;height:100%;background:var(--bg);overflow:hidden;font-famil
 
 <!-- DEV PANEL -->
 <div id="dp">
-  <div id="dh"><span id="dt">◈ TETRADRIFT DEV <span class="dblink">█</span></span><button id="dx">[X]</button></div>
+  <div id="dh"><span id="dt">◈ SUPA DOOPA WAFFLES DEV <span class="dblink">█</span></span><button id="dx">[X]</button></div>
   <div id="dtabs">
     <button class="dtab on" data-t="con">CONSOLE</button>
     <button class="dtab" data-t="che">CHEATS</button>
@@ -161,7 +161,7 @@ html,body{width:100%;height:100%;background:var(--bg);overflow:hidden;font-famil
 <script>
 'use strict';
 // ═══════════════════════════════════════════════════════════════
-//  TETRADRIFT v5 — Tetris × Flappy Bird
+//  SUPA DOOPA WAFFLES v5 — Tetris × Flappy Bird
 //  Celluloïd Scalpel Production
 //  1 vie · Musique Web Audio · Succès · Effets ligne
 // ═══════════════════════════════════════════════════════════════
@@ -180,6 +180,8 @@ let CELL=calcCell();
 let GRID_W=COLS*CELL, GRID_H=ROWS*CELL;
 let DW=GRID_W, DH=GRID_TOP+GRID_H+TIMER_H+8;
 let scale=1;
+let nebulaCanvas=null;
+let projs=[]; // pré-déclaré ici car resize() y accède dès le départ
 function resize(){
   CELL=calcCell();
   GRID_W=COLS*CELL; GRID_H=ROWS*CELL;
@@ -187,11 +189,13 @@ function resize(){
   scale=Math.min(window.innerWidth/DW, window.innerHeight/DH);
   canvas.width=Math.floor(DW*scale); canvas.height=Math.floor(DH*scale);
   ctx.setTransform(scale,0,0,scale,0,0);
-  // Fix: mettre à jour cellSize des projectiles pièce après resize
-  for(const p of projs){ if(p.type==='piece') p.cellSize=CELL; }
-  if(nebulaCanvas){ nebulaCanvas=null; } // régénérer la nébuleuse
+  nebulaCanvas=null;
 }
-resize(); window.addEventListener('resize',resize);
+resize();
+window.addEventListener('resize', ()=>{
+  resize();
+  for(const p of projs){ if(p.type==='piece') p.cellSize=CELL; }
+});
 
 // ── Palette ─────────────────────────────────────────────────
 const C={bg:'#0a0a0f',cy:'#00f5ff',mg:'#ff006e',am:'#ffd60a',
@@ -322,7 +326,7 @@ function flap(force=1.0){
 }
 
 // ── Projectiles (cubes + pièces selon niveau) ────────────────
-const projs=[];      // projectiles actifs
+// projectiles actifs (déclaré en haut du fichier)
 let projAccum=0;
 let cubeEnabled=true;
 
@@ -782,7 +786,6 @@ const STAR_LAYERS = [
 const stars = [];
 
 // Nébuleuses : blobs colorés fixes (dessinés une seule fois sur offscreen)
-let nebulaCanvas = null;
 
 function initCosmos(){
   // Générer les étoiles
@@ -1379,7 +1382,7 @@ bindBtn('btnSubmit', async ()=>{
 });
 document.getElementById('tB').textContent=highScore;
 
-devLog('◈ TETRADRIFT v5 — Celluloïd Scalpel Production','ls');
+devLog('◈ SUPA DOOPA WAFFLES v5 — Celluloïd Scalpel Production','ls');
 devLog('Triple-tap haut-gauche · ↑↑↓↓←→←→ · M = mute','ls');
 </script>
 </body>
