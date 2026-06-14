@@ -91,6 +91,7 @@ html,body{width:100%;height:100%;background:var(--bg);overflow:hidden;font-famil
     <div class="sd">Tap pour voler · Double-tap pour pivoter<br>Swipe G/D pour déplacer<br>1 vie · Les cubes = game over !</div>
     <button class="btn" id="btnS">▶ JOUER</button>
     <button class="btn" id="btnLB" style="margin-top:12px;font-size:12px;padding:10px 28px;border-color:#cc44ff;color:#cc44ff;box-shadow:0 0 15px rgba(204,68,255,.4)">🏆 SCORES</button>
+    <button class="btn" id="btnSkinsOpen" style="margin-top:8px;font-size:12px;padding:10px 28px;border-color:#ffd60a;color:#ffd60a;box-shadow:0 0 15px rgba(255,214,10,.4)">🎨 SKINS</button>
     <div style="margin-top:14px;font-size:12px;color:#aabbff;letter-spacing:3px;font-weight:bold">BEST <span id="tB" style="color:#ffd60a;text-shadow:0 0 8px #ffd60a">0</span></div>
   </div>
 
@@ -119,6 +120,20 @@ html,body{width:100%;height:100%;background:var(--bg);overflow:hidden;font-famil
     <div style="font-size:8px;letter-spacing:3px;color:#8888bb;margin-bottom:16px">SUPA DOOPA WAFFLES — TOP 10</div>
     <div id="lbList" style="width:100%;max-width:300px;margin-bottom:20px;min-height:180px;display:flex;flex-direction:column;gap:4px"></div>
     <button class="btn" id="btnLBBack" style="font-size:12px;padding:10px 24px">← RETOUR</button>
+  </div>
+
+  <!-- SKINS / INVENTAIRE -->
+  <div class="screen hidden" id="sSkins" style="overflow-y:auto;justify-content:flex-start;padding-top:20px">
+    <div style="font-size:13px;letter-spacing:5px;color:#ffd60a;margin-bottom:4px;font-weight:900;text-shadow:0 0 12px #ffd60a">🎨 INVENTAIRE</div>
+    <div style="font-size:8px;letter-spacing:3px;color:#8888bb;margin-bottom:16px">ÉQUIPE TES SKINS</div>
+
+    <div style="font-size:10px;letter-spacing:3px;color:#aabbff;font-weight:bold;margin-bottom:8px;align-self:flex-start">── FONDS ──</div>
+    <div id="skinBgList" style="width:100%;max-width:320px;display:flex;flex-direction:column;gap:6px;margin-bottom:18px"></div>
+
+    <div style="font-size:10px;letter-spacing:3px;color:#aabbff;font-weight:bold;margin-bottom:8px;align-self:flex-start">── PIÈCES ──</div>
+    <div id="skinPieceList" style="width:100%;max-width:320px;display:flex;flex-direction:column;gap:6px;margin-bottom:20px"></div>
+
+    <button class="btn" id="btnSkinsBack" style="font-size:12px;padding:10px 24px">← RETOUR</button>
   </div>
 </div>
 
@@ -296,14 +311,14 @@ function spawnPiece(){
   piece.locked=false;
   piece.pieceTimer = Math.max(8.0, PIECE_TIME_BASE - (currentLevel - 1) * 0.8);
   piece.invincible=true;
-  piece.invTimer=1.0;
-  // Si un projectile chevauche déjà la zone de spawn → prolonger l'invincibilité
+  piece.invTimer=2.5; // 2.5s d'immunité au spawn
+  // Si un proj est déjà dans la zone → 3.5s
   for(const p of projs){
     const pw = p.type==='cube' ? p.size : (Math.max(...p.cells.map(c=>c[0]))+1)*p.cellSize;
     const ph = p.type==='cube' ? p.size : (Math.max(...p.cells.map(c=>c[1]))+1)*p.cellSize;
     const spawnY = GRID_TOP + (-1.5 - BUFFER) * CELL;
-    if(p.x < GRID_W && p.x+pw > 0 && p.y < spawnY+CELL*2 && p.y+ph > spawnY-CELL){
-      piece.invTimer = Math.max(piece.invTimer, 2.0); // prolonger à 2s
+    if(!p.pending && p.x < GRID_W && p.x+pw > 0 && p.y < spawnY+CELL*3 && p.y+ph > spawnY-CELL){
+      piece.invTimer = 3.5;
     }
   }
 }
@@ -372,7 +387,6 @@ function spawnProj(){
   const spd = (cfg.spd + Math.random()*30) * speedMult;
 
   if(doPiece){
-    // Pièce projectile : même shape que la pièce joueur (pour le pivot synchronisé)
     const pKey = PKEYS[Math.floor(Math.random()*PKEYS.length)];
     const pCells = PIECES[pKey].cells.map(c=>[...c]);
     const pColor = PIECES[pKey].color;
@@ -382,6 +396,7 @@ function spawnProj(){
       y: py, spd, dir: left?1:-1,
       cells: pCells, color: pColor,
       cellSize: CELL, dead:false, hit:false,
+      pending: true, warnTimer: 2.0, // 2s de warning avant apparition
     });
   } else {
     const size = 18 + Math.random()*12;
@@ -389,6 +404,7 @@ function spawnProj(){
       type:'cube', x: left ? -size : DW,
       y: py, spd, dir: left?1:-1,
       size, dead:false, hit:false,
+      pending: true, warnTimer: 2.0,
     });
   }
 }
@@ -417,7 +433,260 @@ function spawnFx(x,y,color,n=10){
   }
 }
 
-// ── Succès ──────────────────────────────────────────────────
+// ── Stats persistantes (pour déblocage skins) ───────────────
+const PERSIST_KEY = 'sdw_persist';
+let persist = JSON.parse(localStorage.getItem(PERSIST_KEY) || '{"totalLines":0,"gamesPlayed":0,"bestScore":0,"tetrisDone":false}');
+function savePersist(){ localStorage.setItem(PERSIST_KEY, JSON.stringify(persist)); }
+
+// ── Définition des SKINS ─────────────────────────────────────
+const BG_SKINS = [
+  {
+    id:'cosmos', name:'🌌 COSMOS', desc:'Défaut — toujours disponible',
+    unlocked: ()=>true, color:'#00f5ff',
+    draw: drawBgCosmos,
+  },
+  {
+    id:'abyss', name:'🌊 ABYSSES', desc:'Effacer 50 lignes au total',
+    unlocked: ()=>persist.totalLines>=50, color:'#00aaff',
+    draw: drawBgAbyss,
+  },
+  {
+    id:'hell', name:'🔥 ENFER NEON', desc:'Atteindre le niveau 10',
+    unlocked: ()=>persist.bestScore>=0 && unlockedAch.has('level10'), color:'#ff4400',
+    draw: drawBgHell,
+  },
+  {
+    id:'matrix', name:'🌿 FORÊT DIGITALE', desc:'Jouer 10 parties',
+    unlocked: ()=>persist.gamesPlayed>=10, color:'#39ff14',
+    draw: drawBgMatrix,
+  },
+];
+
+const PIECE_SKINS = [
+  {
+    id:'crystal', name:'💎 CRISTAL', desc:'Défaut — toujours disponible',
+    unlocked: ()=>true, color:'#00f5ff',
+    draw: drawCellCrystal,
+  },
+  {
+    id:'metal', name:'⚙️ MÉTAL', desc:'Scorer 10 000 pts',
+    unlocked: ()=>persist.bestScore>=10000, color:'#aabbcc',
+    draw: drawCellMetal,
+  },
+  {
+    id:'candy', name:'🍬 CANDY', desc:'Faire un WAFFLE TETRIS',
+    unlocked: ()=>persist.tetrisDone, color:'#ff88cc',
+    draw: drawCellCandy,
+  },
+  {
+    id:'obsidian', name:'☠️ OBSIDIENNE', desc:'Débloquer tous les succès',
+    unlocked: ()=>ACHIEVEMENTS.every(a=>unlockedAch.has(a.id)), color:'#aa44ff',
+    draw: drawCellObsidian,
+  },
+];
+
+// Skins équipés (sauvegardés)
+const EQUIP_KEY = 'sdw_equip';
+let equipped = JSON.parse(localStorage.getItem(EQUIP_KEY)||'{"bg":"cosmos","piece":"crystal"}');
+function saveEquipped(){ localStorage.setItem(EQUIP_KEY, JSON.stringify(equipped)); }
+
+function getActiveBgSkin(){ return BG_SKINS.find(s=>s.id===equipped.bg) || BG_SKINS[0]; }
+function getActivePieceSkin(){ return PIECE_SKINS.find(s=>s.id===equipped.piece) || PIECE_SKINS[0]; }
+
+// ── Fonds alternatifs ────────────────────────────────────────
+let bgParticles = []; // particules de fond (bulles, flammes, code)
+let bgPhase = 0;
+
+function initBgParticles(){
+  bgParticles = [];
+  const skin = getActiveBgSkin();
+  if(skin.id==='abyss'){
+    for(let i=0;i<40;i++) bgParticles.push({ x:Math.random()*DW, y:Math.random()*DH, r:1+Math.random()*3, spd:10+Math.random()*20, alpha:0.2+Math.random()*0.5, wobble:Math.random()*Math.PI*2 });
+  } else if(skin.id==='hell'){
+    for(let i=0;i<50;i++) bgParticles.push({ x:Math.random()*DW, y:DH+Math.random()*DH, r:2+Math.random()*4, spd:30+Math.random()*50, alpha:0.3+Math.random()*0.5, wobble:Math.random()*Math.PI*2, color:Math.random()<.5?'#ff4400':'#ff8800' });
+  } else if(skin.id==='matrix'){
+    for(let i=0;i<20;i++) bgParticles.push({ x:Math.floor(Math.random()*COLS)*CELL, y:Math.random()*DH, spd:40+Math.random()*80, chars:'01アイウエオ', charIdx:0, charTimer:0 });
+  }
+}
+
+function drawBgCosmos(dt){ drawCosmos(dt); }
+
+function drawBgAbyss(dt){
+  // Fond bleu profond dégradé
+  ctx.fillStyle='#010a14'; ctx.fillRect(0,0,DW,DH);
+  const grd=ctx.createLinearGradient(0,0,0,DH);
+  grd.addColorStop(0,'rgba(0,20,60,0.8)'); grd.addColorStop(1,'rgba(0,5,20,0.95)');
+  ctx.fillStyle=grd; ctx.fillRect(0,0,DW,DH);
+  // Bulles qui montent
+  for(const b of bgParticles){
+    b.y -= b.spd * dt;
+    b.wobble += dt * 2;
+    b.x += Math.sin(b.wobble) * 0.5;
+    if(b.y < -10){ b.y=DH+10; b.x=Math.random()*DW; }
+    ctx.globalAlpha=b.alpha*(0.5+0.5*Math.sin(b.wobble*0.5));
+    ctx.strokeStyle='#00ddff'; ctx.lineWidth=1;
+    ctx.beginPath(); ctx.arc(b.x,b.y,b.r,0,Math.PI*2); ctx.stroke();
+    ctx.globalAlpha=b.alpha*0.2;
+    ctx.fillStyle='#00aaff';
+    ctx.beginPath(); ctx.arc(b.x,b.y,b.r,0,Math.PI*2); ctx.fill();
+  }
+  ctx.globalAlpha=1;
+  // Reflets bioluminescents au fond
+  bgPhase+=dt*0.5;
+  for(let i=0;i<3;i++){
+    const grd2=ctx.createRadialGradient(DW*(0.2+i*0.3), DH*0.8, 0, DW*(0.2+i*0.3), DH*0.8, 60+20*Math.sin(bgPhase+i));
+    grd2.addColorStop(0,`rgba(0,${100+i*30},${180+i*20},${0.08+0.04*Math.sin(bgPhase+i)})`);
+    grd2.addColorStop(1,'rgba(0,0,0,0)');
+    ctx.fillStyle=grd2; ctx.fillRect(0,0,DW,DH);
+  }
+}
+
+function drawBgHell(dt){
+  ctx.fillStyle='#0a0000'; ctx.fillRect(0,0,DW,DH);
+  bgPhase+=dt;
+  // Dégradé lave en bas
+  const grd=ctx.createLinearGradient(0,DH*0.6,0,DH);
+  grd.addColorStop(0,'rgba(0,0,0,0)');
+  grd.addColorStop(0.7,`rgba(180,30,0,${0.15+0.05*Math.sin(bgPhase*2)})`);
+  grd.addColorStop(1,`rgba(255,80,0,${0.25+0.1*Math.sin(bgPhase*3)})`);
+  ctx.fillStyle=grd; ctx.fillRect(0,0,DW,DH);
+  // Particules flammes
+  for(const f of bgParticles){
+    f.y -= f.spd * dt;
+    f.wobble += dt*3;
+    f.x += Math.sin(f.wobble)*0.8;
+    if(f.y < -20){ f.y=DH+20; f.x=Math.random()*DW; }
+    const lifeRatio=Math.max(0,(f.y/DH));
+    ctx.globalAlpha=f.alpha*lifeRatio;
+    ctx.fillStyle=f.color;
+    ctx.beginPath(); ctx.arc(f.x,f.y,f.r*(0.5+lifeRatio*0.5),0,Math.PI*2); ctx.fill();
+  }
+  ctx.globalAlpha=1;
+  // Neon grid rouge
+  ctx.strokeStyle=`rgba(255,40,0,${0.08+0.04*Math.sin(bgPhase)})`;
+  ctx.lineWidth=0.5;
+  for(let c=1;c<COLS;c++){ ctx.beginPath(); ctx.moveTo(c*CELL,GRID_TOP); ctx.lineTo(c*CELL,GRID_TOP+GRID_H); ctx.stroke(); }
+  for(let r=1;r<ROWS;r++){ ctx.beginPath(); ctx.moveTo(0,GRID_TOP+r*CELL); ctx.lineTo(GRID_W,GRID_TOP+r*CELL); ctx.stroke(); }
+}
+
+function drawBgMatrix(dt){
+  ctx.fillStyle='rgba(0,4,0,0.92)'; ctx.fillRect(0,0,DW,DH);
+  bgPhase+=dt;
+  ctx.font=`${Math.floor(CELL*0.55)}px monospace`;
+  for(const col of bgParticles){
+    col.y += col.spd * dt;
+    col.charTimer += dt;
+    if(col.charTimer > 0.1){ col.charIdx=Math.floor(Math.random()*col.chars.length); col.charTimer=0; }
+    if(col.y > DH+CELL){ col.y=-CELL; col.x=Math.floor(Math.random()*COLS)*CELL; }
+    // Traîne verte
+    for(let i=0;i<6;i++){
+      const ry=col.y-i*CELL;
+      if(ry<0||ry>DH) continue;
+      ctx.globalAlpha=Math.max(0,(0.6-i*0.1));
+      ctx.fillStyle=i===0?'#afffaf':'#00aa00';
+      ctx.fillText(col.chars[col.charIdx], col.x+2, ry);
+    }
+  }
+  ctx.globalAlpha=1;
+}
+
+// ── Skins pièces ─────────────────────────────────────────────
+function drawCellCrystal(x,y,cs,color){
+  ctx.fillStyle=color; ctx.fillRect(x+1,y+1,cs-2,cs-2);
+  ctx.fillStyle='rgba(0,0,10,0.18)'; ctx.fillRect(x+3,y+3,cs-6,cs-6);
+  ctx.fillStyle='rgba(255,255,255,0.55)'; ctx.fillRect(x+2,y+2,cs-4,3); ctx.fillRect(x+2,y+2,3,cs-4);
+  ctx.fillStyle='rgba(255,255,255,0.7)'; ctx.fillRect(x+3,y+3,4,4);
+  ctx.fillStyle='rgba(0,0,0,0.28)'; ctx.fillRect(x+1,y+cs-4,cs-2,3); ctx.fillRect(x+cs-4,y+1,3,cs-2);
+  ctx.strokeStyle='rgba(0,0,0,0.4)'; ctx.lineWidth=1; ctx.strokeRect(x+.5,y+.5,cs-1,cs-1);
+  ctx.strokeStyle='rgba(255,255,255,0.12)'; ctx.strokeRect(x+1.5,y+1.5,cs-3,cs-3);
+}
+
+function drawCellMetal(x,y,cs,color){
+  // Acier brossé — dégradé gris froid avec reflets
+  const grd=ctx.createLinearGradient(x,y,x+cs,y+cs);
+  grd.addColorStop(0,'#d0d8e0'); grd.addColorStop(0.3,'#8898a8'); grd.addColorStop(0.6,'#b8c8d8'); grd.addColorStop(1,'#6078888');
+  ctx.fillStyle=grd; ctx.fillRect(x+1,y+1,cs-2,cs-2);
+  // Rayures brossées horizontales
+  ctx.fillStyle='rgba(255,255,255,0.12)';
+  for(let i=2;i<cs-2;i+=3) ctx.fillRect(x+1,y+i,cs-2,1);
+  // Reflet diagonal brillant
+  ctx.fillStyle='rgba(255,255,255,0.5)'; ctx.fillRect(x+2,y+2,cs*0.4,2);
+  // Teinte colorée subtile
+  ctx.fillStyle=color.replace(')',',0.15)').replace('rgb','rgba'); ctx.fillRect(x+1,y+1,cs-2,cs-2);
+  ctx.strokeStyle='#445566'; ctx.lineWidth=1; ctx.strokeRect(x+.5,y+.5,cs-1,cs-1);
+  ctx.strokeStyle='rgba(255,255,255,0.3)'; ctx.strokeRect(x+1.5,y+1.5,cs-3,cs-3);
+}
+
+function drawCellCandy(x,y,cs,color){
+  // Pastel brillant, style bonbon
+  const light=color+'cc';
+  ctx.fillStyle=color; ctx.fillRect(x+1,y+1,cs-2,cs-2);
+  // Brillance bulle
+  const grd=ctx.createRadialGradient(x+cs*0.35,y+cs*0.3,0,x+cs*0.5,y+cs*0.5,cs*0.6);
+  grd.addColorStop(0,'rgba(255,255,255,0.6)'); grd.addColorStop(0.4,'rgba(255,255,255,0.1)'); grd.addColorStop(1,'rgba(0,0,0,0.1)');
+  ctx.fillStyle=grd; ctx.fillRect(x+1,y+1,cs-2,cs-2);
+  // Reflet brillant
+  ctx.fillStyle='rgba(255,255,255,0.8)'; ctx.fillRect(x+3,y+3,Math.floor(cs*0.4),3);
+  ctx.strokeStyle='rgba(255,255,255,0.4)'; ctx.lineWidth=1.5; ctx.strokeRect(x+1,y+1,cs-2,cs-2);
+}
+
+function drawCellObsidian(x,y,cs,color){
+  // Noir volcanique, liseré violet
+  ctx.fillStyle='#0a0010'; ctx.fillRect(x+1,y+1,cs-2,cs-2);
+  // Texture veines violettes
+  ctx.strokeStyle=`rgba(160,60,255,0.4)`; ctx.lineWidth=0.5;
+  ctx.beginPath(); ctx.moveTo(x+2,y+cs*0.3); ctx.lineTo(x+cs*0.6,y+2); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(x+cs*0.7,y+2); ctx.lineTo(x+cs-2,y+cs*0.7); ctx.stroke();
+  // Reflet violet subtil
+  const grd=ctx.createLinearGradient(x,y,x+cs,y+cs);
+  grd.addColorStop(0,'rgba(140,40,255,0.18)'); grd.addColorStop(1,'rgba(0,0,0,0)');
+  ctx.fillStyle=grd; ctx.fillRect(x+1,y+1,cs-2,cs-2);
+  // Bordure violette phosphorescente
+  ctx.strokeStyle='rgba(160,60,255,0.7)'; ctx.lineWidth=1; ctx.strokeRect(x+.5,y+.5,cs-1,cs-1);
+  ctx.fillStyle='rgba(180,80,255,0.6)'; ctx.fillRect(x+2,y+2,4,4);
+}
+
+// ── Écran inventaire ─────────────────────────────────────────
+function renderSkinsScreen(){
+  document.getElementById('sTit').classList.add('hidden');
+  document.getElementById('sSkins').classList.remove('hidden');
+
+  function renderList(containerId, skins, type){
+    const el=document.getElementById(containerId);
+    el.innerHTML='';
+    skins.forEach(skin=>{
+      const isUnlocked=skin.unlocked();
+      const isEquipped=equipped[type]===skin.id;
+      const div=document.createElement('div');
+      div.style.cssText=`display:flex;align-items:center;gap:10px;padding:10px 12px;
+        background:rgba(${isEquipped?'255,214,10':'30,20,60'},${isEquipped?'.12':'.6'});
+        border:1px solid ${isEquipped?'#ffd60a':isUnlocked?'#7b2fff':'#2a2a4a'};
+        border-radius:4px;opacity:${isUnlocked?1:0.5};`;
+      div.innerHTML=`
+        <div style="font-size:20px;width:28px">${isUnlocked?(isEquipped?'✅':''):'🔒'}</div>
+        <div style="flex:1">
+          <div style="color:${isUnlocked?skin.color:'#666'};font-size:12px;font-weight:900;letter-spacing:1px">${skin.name}</div>
+          <div style="color:#8888bb;font-size:9px;letter-spacing:1px;margin-top:2px">${skin.desc}</div>
+        </div>
+        ${isUnlocked&&!isEquipped?`<button onclick="equipSkin('${type}','${skin.id}')" style="background:transparent;border:1px solid ${skin.color};color:${skin.color};font-family:'Courier New',monospace;font-size:10px;padding:5px 10px;cursor:pointer;letter-spacing:1px">ÉQUIPER</button>`:''}
+        ${isEquipped?'<span style="color:#ffd60a;font-size:10px;letter-spacing:1px;font-weight:bold">ACTIF</span>':''}
+      `;
+      el.appendChild(div);
+    });
+  }
+
+  renderList('skinBgList', BG_SKINS, 'bg');
+  renderList('skinPieceList', PIECE_SKINS, 'piece');
+}
+
+function equipSkin(type, id){
+  equipped[type]=id;
+  saveEquipped();
+  if(type==='bg') initBgParticles();
+  nebulaCanvas=null;
+  renderSkinsScreen();
+  devLog(`🎨 Skin ${type}: ${id}`,'li');
+}
 const ACHIEVEMENTS=[
   {id:'first',   label:'🎮 PREMIER BLOC',    cond:()=>totalPieces>=1},
   {id:'line1',   label:'✨ PREMIÈRE LIGNE',  cond:()=>lines>=1},
@@ -655,25 +924,36 @@ function update(dt){
     if(piece.floatRow<-BUFFER){ piece.floatRow=-BUFFER; piece.vy=0; }
   }
 
-  // Projectiles
+  // Warnings et projectiles
   if(cubeEnabled){
     projAccum += dt;
     const delay  = projDelay(currentLevel);
     const cfg    = levelConfig(currentLevel);
-    const active = projs.filter(p=>!p.dead).length;
     const maxP   = cfg.cubes + cfg.pieces;
+    // Compter actifs + warnings en attente
+    const activeReal = projs.filter(p=>!p.dead && !p.pending).length;
+    const activePend = projs.filter(p=>p.pending).length;
 
-    if(projAccum >= delay && active < maxP){
+    if(projAccum >= delay && activeReal + activePend < maxP){
       projAccum = 0;
       spawnProj();
-      // Si on a encore de la place, spawn un 2e / 3e immédiatement
       if(projs.filter(p=>!p.dead).length < maxP) spawnProj();
       if(projs.filter(p=>!p.dead).length < maxP) spawnProj();
     }
   }
 
+  const WARN_DELAY = 2.0; // secondes de warning avant apparition
   const pRow=Math.floor(piece.floatRow);
   for(const proj of projs){
+    // Phase warning : le proj est invisible, on compte juste le timer
+    if(proj.pending){
+      proj.warnTimer -= dt;
+      if(proj.warnTimer <= 0){
+        proj.pending = false; // maintenant il devient réel et visible
+      }
+      continue; // pas de mouvement, pas de collision
+    }
+
     proj.x += proj.spd * proj.dir * dt;
 
     // Sortie écran
@@ -754,6 +1034,10 @@ function doLock(){
     lines+=cleared;
     lineCombo++;
     bestCombo=Math.max(bestCombo,lineCombo);
+    // Stats persistantes
+    persist.totalLines+=cleared;
+    if(cleared>=4) persist.tetrisDone=true;
+    savePersist();
 
     // Scoring : 100 / 200 / 500 selon lignes effacées
     const baseBonus=[0,100,200,200,500][Math.min(cleared,4)];
@@ -913,8 +1197,36 @@ function drawCosmos(dt){
 const shootingStars = [];
 
 function draw(){
-  // Cosmos en fond
-  drawCosmos(lastDt);
+  // Fond selon skin actif
+  getActiveBgSkin().draw(lastDt);
+
+  // ── Warning bords (clignotement avant arrivée d'un proj) ──
+  if(gameState==='playing'){
+    let warnLeft=0, warnRight=0;
+    for(const p of projs){
+      if(!p.pending || p.dead) continue;
+      // Intensité qui monte vers 1 quand warnTimer approche 0
+      const intensity = Math.max(0, 1 - p.warnTimer / 2.0);
+      const blink = Math.sin(frameCount * 0.4) > 0 ? 1 : 0.25;
+      const alpha = Math.max(0.1, intensity) * blink * 0.75;
+      if(p.dir === 1)  warnLeft  = Math.max(warnLeft,  alpha);
+      if(p.dir === -1) warnRight = Math.max(warnRight, alpha);
+    }
+    if(warnLeft > 0){
+      const grd = ctx.createLinearGradient(0,0,50,0);
+      grd.addColorStop(0, `rgba(255,30,30,${warnLeft})`);
+      grd.addColorStop(1, 'rgba(255,30,30,0)');
+      ctx.fillStyle = grd;
+      ctx.fillRect(0, GRID_TOP, 50, GRID_H);
+    }
+    if(warnRight > 0){
+      const grd = ctx.createLinearGradient(DW,0,DW-50,0);
+      grd.addColorStop(0, `rgba(255,30,30,${warnRight})`);
+      grd.addColorStop(1, 'rgba(255,30,30,0)');
+      ctx.fillStyle = grd;
+      ctx.fillRect(DW-50, GRID_TOP, 50, GRID_H);
+    }
+  }
 
   // Fond grille — légèrement plus sombre, teinte violette
   ctx.fillStyle='rgba(8,4,22,0.82)';
@@ -985,6 +1297,7 @@ function draw(){
 
   // Projectiles
   for(const proj of projs){
+    if(proj.pending) continue; // invisible pendant le warning
     if(proj.type==='cube'){
       ctx.fillStyle=C.mg;
       ctx.fillRect(proj.x,proj.y,proj.size,proj.size);
@@ -1071,32 +1384,9 @@ function draw(){
 }
 
 function drawCell(x,y,cs,color){
-  // Corps
-  ctx.fillStyle=color;
-  ctx.fillRect(x+1,y+1,cs-2,cs-2);
-  // Intérieur légèrement assombri (profondeur)
-  ctx.fillStyle='rgba(0,0,10,0.18)';
-  ctx.fillRect(x+3,y+3,cs-6,cs-6);
-  // Reflet haut-gauche (cristal)
-  ctx.fillStyle='rgba(255,255,255,0.55)';
-  ctx.fillRect(x+2,y+2,cs-4,3);
-  ctx.fillRect(x+2,y+2,3,cs-4);
-  // Reflet carré brillant coin
-  ctx.fillStyle='rgba(255,255,255,0.7)';
-  ctx.fillRect(x+3,y+3,4,4);
-  // Ombre bas-droite
-  ctx.fillStyle='rgba(0,0,0,0.28)';
-  ctx.fillRect(x+1,y+cs-4,cs-2,3);
-  ctx.fillRect(x+cs-4,y+1,3,cs-2);
-  // Contour
-  ctx.strokeStyle='rgba(0,0,0,0.4)';
-  ctx.lineWidth=1;
-  ctx.strokeRect(x+.5,y+.5,cs-1,cs-1);
-  // Liseré intérieur coloré clair
-  ctx.strokeStyle='rgba(255,255,255,0.12)';
-  ctx.lineWidth=1;
-  ctx.strokeRect(x+1.5,y+1.5,cs-3,cs-3);
+  getActivePieceSkin().draw(x,y,cs,color);
 }
+
 
 // ── Game loop ────────────────────────────────────────────────
 let lastTS=0, lastDt=0.016;
@@ -1113,19 +1403,23 @@ function gameLoop(ts){
 // ── Flow ─────────────────────────────────────────────────────
 function startGame(){
   score=0; lines=0; currentLevel=1; speedMult=1.0;
-  stopMusic(); // éviter l'empilement audio si on rejoue rapidement
+  stopMusic();
   cubeEnabled=true; projAccum=0; godMode=false;
   totalPieces=0; bestClear=0; cubesDodged=0; bestCombo=0; lineCombo=0;
   sessionAch.clear();
   projs.length=0; particles.length=0; lineEffects.length=0;
   resetGrid();
   initCosmos();
+  initBgParticles();
   nextKey=PKEYS[Math.floor(Math.random()*PKEYS.length)];
   spawnPiece();
   updateHUD();
   document.getElementById('sTit').classList.add('hidden');
   document.getElementById('sOver').classList.add('hidden');
   document.getElementById('sLB').classList.add('hidden');
+  document.getElementById('sSkins').classList.add('hidden');
+  persist.gamesPlayed++;
+  savePersist();
   gameState='playing';
   lastTS=0;
   initAudio();
@@ -1139,14 +1433,13 @@ function gameOver(){
   gameState='over';
   stopMusic();
   if(score>highScore){ highScore=score; localStorage.setItem('td_hs',highScore); }
+  if(score>persist.bestScore){ persist.bestScore=score; savePersist(); }
   document.getElementById('oS').textContent=score;
   document.getElementById('oH').textContent=score>=highScore?'🏆 NOUVEAU RECORD !':'MEILLEUR : '+highScore;
-  // Reset formulaire soumission
   document.getElementById('playerName').value='';
   document.getElementById('lbMsg').textContent='';
   document.getElementById('lbSubmit').style.opacity='1';
   document.getElementById('btnSubmit').disabled=false;
-  // Afficher les succès de la session
   const sa=[...sessionAch].map(id=>ACHIEVEMENTS.find(a=>a.id===id)?.label).filter(Boolean);
   document.getElementById('overAch').textContent=sa.length?'Succès : '+sa.join(' · '):'';
   document.getElementById('sOver').classList.remove('hidden');
@@ -1380,6 +1673,11 @@ bindBtn('btnS', ()=>{ document.getElementById('tB').textContent=highScore; start
 bindBtn('btnR', startGame);
 bindBtn('btnLB', ()=>showLeaderboard('title'));
 bindBtn('btnSeeScores', ()=>showLeaderboard('over'));
+bindBtn('btnSkinsOpen', ()=>{ renderSkinsScreen(); });
+bindBtn('btnSkinsBack', ()=>{
+  document.getElementById('sSkins').classList.add('hidden');
+  document.getElementById('sTit').classList.remove('hidden');
+});
 bindBtn('btnLBBack', ()=>{
   document.getElementById('sLB').classList.add('hidden');
   if(lbFromScreen === 'over'){
