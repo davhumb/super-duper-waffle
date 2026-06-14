@@ -248,15 +248,15 @@ document.addEventListener('mousedown',  ()=>{ initAudio(); if(!musicOn && gameSt
 const C={bg:'#0a0a0f',cy:'#00f5ff',mg:'#ff006e',am:'#ffd60a',
          vi:'#7b2fff',gn:'#39ff14',wh:'#e8e8f0',gr:'#3a3a5c',ni:'#0c0318'};
 
-// ── Pièces — palette pâtisserie ─────────────────────────────
+// ── Pièces — palette saveurs gaufre ─────────────────────────
 const PIECES={
-  I:{cells:[[0,1],[1,1],[2,1],[3,1]],color:'#f5c842'}, // gaufre dorée
-  O:{cells:[[0,0],[1,0],[0,1],[1,1]],color:'#e8855a'}, // caramel brûlé
-  T:{cells:[[1,0],[0,1],[1,1],[2,1]],color:'#d4a0e0'}, // myrtille pastel
-  S:{cells:[[1,0],[2,0],[0,1],[1,1]],color:'#f08080'}, // coulis fraise
-  Z:{cells:[[0,0],[1,0],[1,1],[2,1]],color:'#88d4a0'}, // pistache
-  L:{cells:[[2,0],[0,1],[1,1],[2,1]],color:'#f5d090'}, // beurre fondu
-  J:{cells:[[0,0],[0,1],[1,1],[2,1]],color:'#a0c8f0'}, // chantilly bleue
+  I:{cells:[[0,1],[1,1],[2,1],[3,1]],color:'#c8560a'}, // chocolat
+  O:{cells:[[0,0],[1,0],[0,1],[1,1]],color:'#f7c5d0'}, // fraise
+  T:{cells:[[1,0],[0,1],[1,1],[2,1]],color:'#f5f0d0'}, // vanille
+  S:{cells:[[1,0],[2,0],[0,1],[1,1]],color:'#f5820a'}, // orange
+  Z:{cells:[[0,0],[1,0],[1,1],[2,1]],color:'#7dba5a'}, // pistache
+  L:{cells:[[2,0],[0,1],[1,1],[2,1]],color:'#c890d8'}, // myrtille
+  J:{cells:[[0,0],[0,1],[1,1],[2,1]],color:'#f5c842'}, // caramel
 };
 const PKEYS=Object.keys(PIECES);
 function rotateCW(cells){
@@ -342,14 +342,14 @@ function spawnPiece(){
   piece.locked=false;
   piece.pieceTimer = Math.max(8.0, PIECE_TIME_BASE - (currentLevel - 1) * 0.8);
   piece.invincible=true;
-  piece.invTimer=2.5; // 2.5s d'immunité au spawn
-  // Si un proj est déjà dans la zone → 3.5s
+  piece.invTimer=1.2; // 1.2s d'immunité au spawn
+  // Si un proj est déjà dans la zone → 1.8s
   for(const p of projs){
     const pw = p.type==='cube' ? p.size : (Math.max(...p.cells.map(c=>c[0]))+1)*p.cellSize;
     const ph = p.type==='cube' ? p.size : (Math.max(...p.cells.map(c=>c[1]))+1)*p.cellSize;
     const spawnY = GRID_TOP + (-1.5 - BUFFER) * CELL;
     if(!p.pending && p.x < GRID_W && p.x+pw > 0 && p.y < spawnY+CELL*3 && p.y+ph > spawnY-CELL){
-      piece.invTimer = 3.5;
+      piece.invTimer = 1.8;
     }
   }
 }
@@ -689,33 +689,26 @@ function drawBgMatrix(dt){
 }
 
 // ── Skins pièces ─────────────────────────────────────────────
-function drawCellCrystal(x,y,cs,color){
-  const b = Math.max(4, Math.floor(cs * 0.22)); // épaisseur du cadre
+function drawCellCrystal(x, y, cs, color){
+  const b = Math.ceil(cs * 0.2); // bord
 
-  // Cadre extérieur — couleur principale
-  ctx.fillStyle = color;
+  // Corps doré
+  ctx.fillStyle = '#e8a035';
   ctx.fillRect(x+1, y+1, cs-2, cs-2);
 
-  // Carré intérieur enfoncé — sombre
-  const ix = x + b;
-  const iy = y + b;
-  const iw = cs - b*2;
-  const ih = cs - b*2;
-  if(iw > 2 && ih > 2){
-    // Fond du creux
-    ctx.fillStyle = shadeColor(color, -0.42);
-    ctx.fillRect(ix, iy, iw, ih);
-    // Légère ombre en bas-droite du creux (profondeur)
-    ctx.fillStyle = 'rgba(0,0,0,0.25)';
-    ctx.fillRect(ix + iw*0.55, iy, iw*0.45, ih);
-    ctx.fillRect(ix, iy + ih*0.55, iw, ih*0.45);
-    // Léger reflet en haut-gauche du creux
-    ctx.fillStyle = 'rgba(255,255,255,0.08)';
-    ctx.fillRect(ix, iy, iw*0.45, ih*0.45);
-  }
+  // Alvéole : carré sombre bien visible, 50% de la taille
+  const hs = Math.floor(cs * 0.52);
+  const hx = x + Math.floor((cs - hs) / 2);
+  const hy = y + Math.floor((cs - hs) / 2);
+  ctx.fillStyle = '#6b2e08';
+  ctx.fillRect(hx, hy, hs, hs);
 
-  // Contour noir fin
-  ctx.strokeStyle = 'rgba(0,0,0,0.6)';
+  // Reflet sirop haut-gauche du corps
+  ctx.fillStyle = 'rgba(255,230,120,0.55)';
+  ctx.fillRect(x+2, y+2, Math.ceil(cs*0.35), Math.ceil(cs*0.18));
+
+  // Contour brun
+  ctx.strokeStyle = 'rgba(80,30,0,0.7)';
   ctx.lineWidth = 1;
   ctx.strokeRect(x+.5, y+.5, cs-1, cs-1);
 }
@@ -871,7 +864,9 @@ const dbg={hitbox:false,fps:false,touch:false};
 // ── MUSIQUE MP3 ──────────────────────────────────────────────
 const TRACKS = [
   'https://raw.githubusercontent.com/davhumb/super-duper-waffle/main/supa1.mp3', // niv 1
-  'https://raw.githubusercontent.com/davhumb/super-duper-waffle/main/supa2.mp3', // niv 2+
+  'https://raw.githubusercontent.com/davhumb/super-duper-waffle/main/supa2.mp3', // niv 2-3
+  'https://raw.githubusercontent.com/davhumb/super-duper-waffle/main/supa3.mp3', // niv 4-6
+  'https://raw.githubusercontent.com/davhumb/super-duper-waffle/main/supa4.mp3', // niv 7+
 ];
 
 let audioEl    = null; // élément <audio> actif
@@ -894,9 +889,11 @@ function initAudio(){
 }
 
 function getTrackIdx(){
-  // supa1 = titre + niveau 1, supa2 = niveau 2+
   if(gameState !== 'playing') return 0;
-  return currentLevel >= 2 ? 1 : 0;
+  if(currentLevel >= 7) return 3;
+  if(currentLevel >= 4) return 2;
+  if(currentLevel >= 2) return 1;
+  return 0;
 }
 
 function startMusic(){
@@ -1482,27 +1479,49 @@ function draw(){
         ctx.fillText('+', proj.x+proj.size/2, proj.y+proj.size/2);
         ctx.textAlign='left'; ctx.textBaseline='alphabetic';
       } else {
-        // Cube rouge style landing avec ×
-        const g = ctx.createLinearGradient(proj.x,proj.y,proj.x+proj.size,proj.y+proj.size);
-        g.addColorStop(0,'#ff4444'); g.addColorStop(0.5,'#cc0000'); g.addColorStop(1,'#880000');
-        ctx.fillStyle=g;
-        ctx.fillRect(proj.x,proj.y,proj.size,proj.size);
-        // Reflet
-        ctx.fillStyle='rgba(255,180,180,0.4)';
-        ctx.fillRect(proj.x+2,proj.y+2,proj.size*0.45,proj.size*0.3);
-        // Ombre
-        ctx.fillStyle='rgba(0,0,0,0.3)';
-        ctx.fillRect(proj.x+proj.size*0.5,proj.y+proj.size*0.6,proj.size*0.48,proj.size*0.38);
-        // Contour sombre
-        ctx.strokeStyle='rgba(80,0,0,0.8)'; ctx.lineWidth=1.5;
-        ctx.strokeRect(proj.x+.5,proj.y+.5,proj.size-1,proj.size-1);
-        // Symbole × gras blanc
-        const fs = Math.max(10, Math.floor(proj.size*0.6));
-        ctx.fillStyle='rgba(255,255,255,0.92)';
-        ctx.font=`900 ${fs}px Arial`;
-        ctx.textAlign='center'; ctx.textBaseline='middle';
-        ctx.fillText('×', proj.x+proj.size/2, proj.y+proj.size/2);
-        ctx.textAlign='left'; ctx.textBaseline='alphabetic';
+        // Cube rouge style landing — croix sculptée en relief
+        const g = ctx.createLinearGradient(proj.x, proj.y, proj.x+proj.size, proj.y+proj.size);
+        g.addColorStop(0, '#ff5544');
+        g.addColorStop(0.5,'#cc1100');
+        g.addColorStop(1,  '#880000');
+        ctx.fillStyle = g;
+        ctx.fillRect(proj.x, proj.y, proj.size, proj.size);
+
+        // Reflet haut-gauche
+        ctx.fillStyle = 'rgba(255,180,160,0.35)';
+        ctx.fillRect(proj.x+2, proj.y+2, proj.size*0.5, proj.size*0.22);
+        ctx.fillRect(proj.x+2, proj.y+2, proj.size*0.22, proj.size*0.5);
+
+        // Croix sculptée — barre horizontale
+        const cx = proj.x + proj.size*0.18;
+        const cy = proj.y + proj.size*0.38;
+        const cw = proj.size*0.64;
+        const ch = proj.size*0.24;
+        // Ombre de la croix (profondeur)
+        ctx.fillStyle = 'rgba(0,0,0,0.4)';
+        ctx.fillRect(cx+1, cy+1, cw, ch);
+        // Corps de la croix
+        ctx.fillStyle = '#cc2200';
+        ctx.fillRect(cx, cy, cw, ch);
+        // Reflet haut de la croix
+        ctx.fillStyle = 'rgba(255,120,100,0.5)';
+        ctx.fillRect(cx, cy, cw, ch*0.35);
+
+        // Barre verticale
+        const vx = proj.x + proj.size*0.38;
+        const vy = proj.y + proj.size*0.18;
+        const vw = proj.size*0.24;
+        const vh = proj.size*0.64;
+        ctx.fillStyle = 'rgba(0,0,0,0.4)';
+        ctx.fillRect(vx+1, vy+1, vw, vh);
+        ctx.fillStyle = '#cc2200';
+        ctx.fillRect(vx, vy, vw, vh);
+        ctx.fillStyle = 'rgba(255,120,100,0.5)';
+        ctx.fillRect(vx, vy, vw*0.45, vh);
+
+        // Contour
+        ctx.strokeStyle = 'rgba(60,0,0,0.8)'; ctx.lineWidth=1.5;
+        ctx.strokeRect(proj.x+.5, proj.y+.5, proj.size-1, proj.size-1);
       }
       if(dbg.hitbox){ ctx.strokeStyle='#ff0'; ctx.strokeRect(proj.x,proj.y,proj.size,proj.size); }
     } else {
