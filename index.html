@@ -399,8 +399,6 @@ function spawnProj(){
   const totalSlots = cfg.cubes + cfg.pieces;
   if(totalSlots === 0) return;
 
-  // On spawn un cube ou une pièce selon la config
-  // On alterne : si des pièces sont dispo, on en spawn une de temps en temps
   const doPiece = cfg.pieces > 0 && (cfg.cubes === 0 || Math.random() < cfg.pieces/totalSlots);
 
   const left = Math.random() < .5;
@@ -412,22 +410,38 @@ function spawnProj(){
 
   const spd = (cfg.spd + Math.random()*30) * speedMult;
 
+  // Probabilité cube blanc : 35% niv1, descend à 15% niv10+
+  const whiteChance = Math.max(0.12, 0.35 - (currentLevel-1)*0.025);
+  const isWhite = !doPiece && Math.random() < whiteChance;
+
   if(doPiece){
     const pKey = PKEYS[Math.floor(Math.random()*PKEYS.length)];
     const pCells = PIECES[pKey].cells.map(c=>[...c]);
     const pColor = PIECES[pKey].color;
     const w = (Math.max(...pCells.map(c=>c[0]))+1)*CELL;
     projs.push({
-      type:'piece', x: left ? -w : DW,
+      type:'piece', subtype:'red',
+      x: left ? -w : DW,
       y: py, spd, dir: left?1:-1,
       cells: pCells, color: pColor,
       cellSize: CELL, dead:false, hit:false,
-      pending: true, warnTimer: 2.0, // 2s de warning avant apparition
+      pending: true, warnTimer: 2.0,
+    });
+  } else if(isWhite){
+    const size = 18 + Math.random()*12;
+    projs.push({
+      type:'cube', subtype:'white',
+      x: left ? -size : DW,
+      y: py, spd, dir: left?1:-1,
+      size, dead:false, hit:false,
+      pending: true, warnTimer: 2.0,
+      color: '#e8f0ff',
     });
   } else {
     const size = 18 + Math.random()*12;
     projs.push({
-      type:'cube', x: left ? -size : DW,
+      type:'cube', subtype:'red',
+      x: left ? -size : DW,
       y: py, spd, dir: left?1:-1,
       size, dead:false, hit:false,
       pending: true, warnTimer: 2.0,
@@ -435,7 +449,59 @@ function spawnProj(){
   }
 }
 
-// Quand le joueur pivote, les pièces-projectiles pivotent aussi
+// Fusionner un cube blanc à la pièce joueur
+function mergeWhiteCube(proj){
+  // Trouver le point d'impact : côté gauche ou droit de la pièce
+  const pRow = piece.floatRow;
+  const fromLeft = proj.dir === 1; // vient de gauche → s'accroche à droite
+
+  // Trouver les cellules "bordure" du côté de l'impact
+  const maxCol = Math.max(...piece.cells.map(c=>c[0]));
+  const minCol = Math.min(...piece.cells.map(c=>c[0]));
+
+  // Pour chaque rangée occupée, trouver la cellule la plus proche du cube
+  const existingSet = new Set(piece.cells.map(([c,r])=>`${c},${r}`));
+  const newCells = [];
+
+  // Trouver où le cube se trouve verticalement par rapport à la pièce
+  const cubeRowCenter = (proj.y - GRID_TOP + proj.size/2) / CELL + BUFFER;
+  const targetRow = Math.round(cubeRowCenter - pRow);
+  const clampedRow = Math.max(0, Math.min(3, targetRow));
+
+  // Chercher les rangées adjacentes à coller
+  const rowsToAttach = [clampedRow];
+  if(clampedRow > 0 && !rowsToAttach.includes(clampedRow-1)) rowsToAttach.push(clampedRow-1);
+  if(clampedRow < 3) rowsToAttach.push(clampedRow+1);
+
+  for(const row of rowsToAttach){
+    const attachCol = fromLeft
+      ? maxCol + 1  // s'accroche à droite
+      : minCol - 1; // s'accroche à gauche
+    const key = `${attachCol},${row}`;
+    if(!existingSet.has(key)){
+      newCells.push([attachCol, row]);
+      existingSet.add(key);
+      break; // une cellule par fusion (cube = 1 cellule)
+    }
+  }
+
+  if(newCells.length === 0) return false; // pas de place
+
+  // Vérifier que la nouvelle pièce rentre dans la grille (10 colonnes)
+  const allCells = [...piece.cells, ...newCells];
+  const normAll = normalizeCells(allCells);
+  const newMaxCol = Math.max(...normAll.map(c=>c[0]));
+  if(piece.col + newMaxCol >= COLS || piece.col < 0){
+    showFlash('TROP GROS!', '#ff8800');
+    return false;
+  }
+
+  // Fusion réussie
+  piece.cells = normAll;
+  // Réajuster col si nécessaire
+  piece.col = Math.max(0, Math.min(COLS - newMaxCol - 1, piece.col));
+  return true;
+}
 function rotateProjPieces(){
   for(const p of projs){
     if(p.type==='piece'){
@@ -1007,11 +1073,23 @@ function update(dt){
         }
       }
       if(hit){
-        proj.dead=true; proj.hit=true;
-        spawnFx(proj.x+projW/2, proj.y+20, C.mg, 16);
-        showFlash('💥 GAME OVER', C.mg);
-        sndGameOver(); stopMusic();
-        setTimeout(gameOver, 600); return;
+        if(proj.subtype === 'white'){
+          // Cube blanc : fusion avec la pièce
+          proj.dead = true;
+          const merged = mergeWhiteCube(proj);
+          if(merged){
+            spawnFx(proj.x + proj.size/2, proj.y + proj.size/2, '#e8f0ff', 10);
+            showFlash('✚ FUSION!', '#e8f0ff');
+            devLog('✚ Cube blanc fusionné','li');
+          }
+        } else {
+          // Cube rouge : game over
+          proj.dead=true; proj.hit=true;
+          spawnFx(proj.x+projW/2, proj.y+20, C.mg, 16);
+          showFlash('💥 GAME OVER', C.mg);
+          sndGameOver(); stopMusic();
+          setTimeout(gameOver, 600); return;
+        }
       }
     }
   }
@@ -1285,30 +1363,29 @@ function draw(){
 
   // ── Warning bords (dessiné APRÈS le fond pour être visible) ──
   if(gameState==='playing'){
-    let warnLeft=0, warnRight=0;
+    let warnLeft=null, warnRight=null;
     for(const p of projs){
       if(!p.pending || p.dead) continue;
       const urgency = 1 - p.warnTimer / 2.0;
       const blinkSpeed = 0.15 + urgency * 0.45;
       const blink = Math.sin(frameCount * blinkSpeed * Math.PI) > 0 ? 1 : 0.15;
       const alpha = (0.12 + urgency * 0.22) * blink;
-      if(p.dir === 1)  warnLeft  = Math.max(warnLeft,  alpha);
-      if(p.dir === -1) warnRight = Math.max(warnRight, alpha);
+      const obj = { alpha, isWhite: p.subtype === 'white' };
+      if(p.dir === 1)  { if(!warnLeft  || alpha > warnLeft.alpha)  warnLeft  = obj; }
+      if(p.dir === -1) { if(!warnRight || alpha > warnRight.alpha) warnRight = obj; }
     }
-    if(warnLeft > 0){
-      const grd = ctx.createLinearGradient(0,0,70,0);
-      grd.addColorStop(0, `rgba(255,30,30,${warnLeft})`);
-      grd.addColorStop(1, 'rgba(255,30,30,0)');
+
+    function drawWarn(x1, x2, info){
+      if(!info || info.alpha <= 0) return;
+      const color = info.isWhite ? '140,180,255' : '255,30,30';
+      const grd = ctx.createLinearGradient(x1, 0, x2, 0);
+      grd.addColorStop(0, `rgba(${color},${info.alpha})`);
+      grd.addColorStop(1, `rgba(${color},0)`);
       ctx.fillStyle = grd;
-      ctx.fillRect(0, GRID_TOP, 70, GRID_H);
+      ctx.fillRect(Math.min(x1,x2), GRID_TOP, 70, GRID_H);
     }
-    if(warnRight > 0){
-      const grd = ctx.createLinearGradient(DW,0,DW-70,0);
-      grd.addColorStop(0, `rgba(255,30,30,${warnRight})`);
-      grd.addColorStop(1, 'rgba(255,30,30,0)');
-      ctx.fillStyle = grd;
-      ctx.fillRect(DW-70, GRID_TOP, 70, GRID_H);
-    }
+    drawWarn(0, 70, warnLeft);
+    drawWarn(DW, DW-70, warnRight);
   }
 
   // Effets lignes (flash blanc sur les lignes en cours d'effacement)
@@ -1369,16 +1446,36 @@ function draw(){
   for(const proj of projs){
     if(proj.pending) continue; // invisible pendant le warning
     if(proj.type==='cube'){
-      ctx.fillStyle=C.mg;
-      ctx.fillRect(proj.x,proj.y,proj.size,proj.size);
-      ctx.fillStyle='rgba(255,255,255,.30)';
-      ctx.fillRect(proj.x+1,proj.y+1,proj.size-2,2);
-      ctx.fillRect(proj.x+1,proj.y+1,2,proj.size-2);
-      ctx.fillStyle='rgba(0,0,0,.35)';
-      ctx.fillRect(proj.x+1,proj.y+proj.size-3,proj.size-2,2);
-      ctx.fillRect(proj.x+proj.size-3,proj.y+1,2,proj.size-2);
-      ctx.strokeStyle='rgba(0,0,0,.5)'; ctx.lineWidth=1;
-      ctx.strokeRect(proj.x+.5,proj.y+.5,proj.size-1,proj.size-1);
+      if(proj.subtype==='white'){
+        // Cube blanc nacré — attirant, avec symbole ✚
+        ctx.fillStyle='#d8e8ff';
+        ctx.fillRect(proj.x,proj.y,proj.size,proj.size);
+        ctx.fillStyle='rgba(255,255,255,0.7)';
+        ctx.fillRect(proj.x+2,proj.y+2,proj.size-4,3);
+        ctx.fillRect(proj.x+2,proj.y+2,3,proj.size-4);
+        ctx.fillStyle='rgba(255,255,255,0.9)';
+        const mid=proj.size/2;
+        ctx.fillRect(proj.x+mid-2,proj.y+mid-2,4,4);
+        ctx.strokeStyle='rgba(140,180,255,0.9)'; ctx.lineWidth=1.5;
+        ctx.strokeRect(proj.x+.5,proj.y+.5,proj.size-1,proj.size-1);
+        ctx.fillStyle='rgba(80,130,255,0.85)';
+        ctx.font=`bold ${Math.max(8,Math.floor(proj.size*0.5))}px monospace`;
+        ctx.textAlign='center';
+        ctx.fillText('+', proj.x+proj.size/2, proj.y+proj.size*0.72);
+        ctx.textAlign='left';
+      } else {
+        // Cube rouge
+        ctx.fillStyle=C.mg;
+        ctx.fillRect(proj.x,proj.y,proj.size,proj.size);
+        ctx.fillStyle='rgba(255,255,255,.30)';
+        ctx.fillRect(proj.x+1,proj.y+1,proj.size-2,2);
+        ctx.fillRect(proj.x+1,proj.y+1,2,proj.size-2);
+        ctx.fillStyle='rgba(0,0,0,.35)';
+        ctx.fillRect(proj.x+1,proj.y+proj.size-3,proj.size-2,2);
+        ctx.fillRect(proj.x+proj.size-3,proj.y+1,2,proj.size-2);
+        ctx.strokeStyle='rgba(0,0,0,.5)'; ctx.lineWidth=1;
+        ctx.strokeRect(proj.x+.5,proj.y+.5,proj.size-1,proj.size-1);
+      }
       if(dbg.hitbox){ ctx.strokeStyle='#ff0'; ctx.strokeRect(proj.x,proj.y,proj.size,proj.size); }
     } else {
       // Pièce projectile
