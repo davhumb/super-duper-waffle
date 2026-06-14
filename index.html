@@ -306,6 +306,7 @@ function gridOverflow(){ return grid.slice(0,BUFFER).some(r=>r.some(c=>c!==null)
 // ── Effets de ligne ──────────────────────────────────────────
 // lineEffects : tableau de { row, cells:[{c,color}], timer, maxTimer }
 const lineEffects=[];
+const dropFlashes=[]; // flash blanc quand une pièce se pose
 
 function triggerLineEffect(fullRows){
   for(const r of fullRows){
@@ -407,10 +408,10 @@ function projDelay(lv){
 
 // ── Tutoriels par stage ──────────────────────────────────────
 const STAGE_TUTORIALS = {
-  1: { icon:'🔴', title:'CUBE ROUGE',    desc:'Touche = Game Over\nÉvite-les !' },
-  2: { icon:'⬜', title:'CUBE BLANC',    desc:'Touche = Absorption\nFaçonne ta pièce !' },
-  3: { icon:'🔵', title:'CUBE GRAVITÉ',  desc:'T\'attire vers lui\nRésiste !' },
-  4: { icon:'🧊', title:'CUBE GELÉ',     desc:'Rotation bloquée 1.5s\nAnticipe !' },
+  1: { color:'#cc1100', border:'#880000', symbol:'×', symbolColor:'#ffffff', title:'CUBE ROUGE',   desc:'Touche = Game Over\nÉvite-les !' },
+  2: { color:'#d8eeff', border:'#88aaff', symbol:'+', symbolColor:'#2244cc', title:'CUBE BLANC',   desc:'Touche = Absorption\nFaçonne ta pièce !' },
+  3: { color:'#3322cc', border:'#6644ff', symbol:'⟳', symbolColor:'#ccbbff', title:'CUBE GRAVITÉ', desc:"T'attire vers lui\nRésiste !" },
+  4: { color:'#44aacc', border:'#aaddff', symbol:'❄', symbolColor:'#003355', title:'CUBE GELÉ',    desc:'Rotation bloquée 1.5s\nAnticipe !' },
 };
 
 let tutorialShown = new Set();
@@ -436,7 +437,7 @@ function showStageTutorial(lv){
     min-width:220px;
   `;
   el.innerHTML = `
-    <div style="font-size:48px;margin-bottom:8px">${t.icon}</div>
+    <canvas id="tutIcon" width="64" height="64" style="margin-bottom:10px;border-radius:10px"></canvas>
     <div style="font-size:9px;color:#c8a060;letter-spacing:3px;margin-bottom:4px">STAGE ${lv} — NOUVEAU CUBE</div>
     <div style="font-size:18px;font-weight:900;color:#f5a623;text-shadow:0 0 10px #f5a623;letter-spacing:1px;margin-bottom:10px">${t.title}</div>
     <div style="font-size:13px;color:#ffe8c0;line-height:1.7;white-space:pre-line">${t.desc}</div>
@@ -444,6 +445,34 @@ function showStageTutorial(lv){
   `;
   document.getElementById('gc').appendChild(el);
   setTimeout(()=> el.style.transform='translate(-50%,-50%) scale(1)', 30);
+
+  // Dessiner le carré coloré dans le canvas
+  const tutCvs = el.querySelector('#tutIcon');
+  if(tutCvs){
+    const tc = tutCvs.getContext('2d');
+    const s = 64, r = s*0.18, b = Math.floor(s*0.18);
+    // Corps
+    tc.fillStyle = t.color;
+    tc.beginPath(); tc.roundRect(2,2,s-4,s-4,r); tc.fill();
+    // Alvéole sombre
+    const hs = Math.floor((s-4)*0.52);
+    const hx = 2+Math.floor(((s-4)-hs)/2);
+    const hy = 2+Math.floor(((s-4)-hs)/2);
+    tc.fillStyle = 'rgba(0,0,0,0.35)';
+    tc.beginPath(); tc.roundRect(hx,hy,hs,hs,r*0.5); tc.fill();
+    // Reflet
+    tc.fillStyle = 'rgba(255,255,255,0.35)';
+    tc.fillRect(4,4,20,6);
+    // Symbole
+    tc.fillStyle = t.symbolColor;
+    tc.font = `900 ${Math.floor(s*0.45)}px Arial`;
+    tc.textAlign='center'; tc.textBaseline='middle';
+    tc.fillText(t.symbol, s/2, s/2+2);
+    // Contour
+    tc.strokeStyle = t.border;
+    tc.lineWidth = 2;
+    tc.beginPath(); tc.roundRect(2,2,s-4,s-4,r); tc.stroke();
+  }
 
   // Compte à rebours
   let remaining = 3;
@@ -1228,6 +1257,11 @@ function update(dt){
     lineEffects[i].timer-=dt;
     if(lineEffects[i].timer<=0) lineEffects.splice(i,1);
   }
+  // Drop flashes
+  for(let i=dropFlashes.length-1;i>=0;i--){
+    dropFlashes[i].timer-=dt;
+    if(dropFlashes[i].timer<=0) dropFlashes.splice(i,1);
+  }
 
   // Particules
   for(let i=particles.length-1;i>=0;i--){
@@ -1256,6 +1290,16 @@ function doLock(){
 
   const row=Math.floor(piece.floatRow);
   lockPiece(piece.cells,piece.col,row,piece.color);
+
+  // ── Animation drop : flash blanc sur les cellules posées ──
+  for(const [dc,dr] of piece.cells){
+    const cx=(piece.col+dc)*CELL, cy=GRID_TOP+(row+dr-BUFFER)*CELL;
+    if(cy>=GRID_TOP && cy<GRID_TOP+GRID_H){
+      dropFlashes.push({ x:cx, y:cy, timer:0.25, maxTimer:0.25, color:piece.color });
+    }
+  }
+  // Petites particules d'impact en bas de chaque colonne
+  spawnFx(piece.x||piece.col*CELL+CELL, GRID_TOP+(row-BUFFER+1)*CELL, piece.color, 6);
 
   if(gridOverflow()){ stopMusic(); sndGameOver(); setTimeout(gameOver,250); return; }
 
@@ -1299,23 +1343,7 @@ function doLock(){
   setTimeout(spawnPiece,300);
 }
 
-function checkLevel(){
-  const lv=Math.floor(lines/10)+1;
-  if(lv>currentLevel){
-    currentLevel=lv;
-    speedMult=Math.min(1.8, 1.0+(lv-1)*.1);
-    checkMusicTrack(); // switcher la piste si besoin
-    const cfg=levelConfig(lv);
-    let msg='';
-    if(lv===4)  msg='NIVEAU 4 — 2 CUBES!';
-    else if(lv===7)  msg='NIVEAU 7 — 3 CUBES!';
-    else if(lv===10) msg='NIVEAU 10 — PIÈCES!';
-    else if(lv===15) msg='NIVEAU 15 — MAX!';
-    else msg=`NIVEAU ${lv}`;
-    showFlash(msg, C.vi);
-    devLog(`⬆ ${msg} speed:${speedMult.toFixed(2)} projSpd:${cfg.spd}px/s`,'lw');
-  }
-}
+// checkLevel défini plus haut (toutes les 5 lignes)
 
 // ── Cosmos background ────────────────────────────────────────
 // 3 couches d'étoiles (profondeur différente)
@@ -1542,9 +1570,22 @@ function draw(){
     }
   }
 
+  // Drop flashes — éclair blanc quand une pièce se pose
+  for(const df of dropFlashes){
+    const progress = 1 - df.timer/df.maxTimer; // 0→1
+    const alpha = (1-progress)*0.85;
+    ctx.globalAlpha = alpha;
+    ctx.fillStyle = '#ffffff';
+    const shrink = progress*4;
+    ctx.beginPath();
+    ctx.roundRect(df.x+shrink, df.y+shrink, CELL-shrink*2, CELL-shrink*2, CELL*0.15);
+    ctx.fill();
+  }
+  ctx.globalAlpha=1;
+
   // Ghost
   if(!piece.locked&&gameState==='playing'){
-    let gr=Math.floor(piece.floatRow);
+    let gr=Math.max(Math.floor(piece.floatRow), -BUFFER);
     while(canPlace(piece.cells,piece.col,gr+1)) gr++;
     ctx.globalAlpha=.15;
     for(const [dc,dr] of piece.cells){
@@ -1556,6 +1597,28 @@ function draw(){
 
   // Pièce active
   if(!piece.locked&&gameState==='playing'){
+
+    // ── Traînée (trail) quand vy rapide ──────────────────────
+    const absVy = Math.abs(piece.vy);
+    if(absVy > 2){
+      const trailCount = Math.min(4, Math.floor(absVy / 1.5));
+      for(let t=trailCount; t>=1; t--){
+        const trailRow = piece.floatRow - t * 0.35 * Math.sign(piece.vy);
+        const trailAlpha = (0.08 + 0.06*(trailCount-t)) * Math.min(1, absVy/6);
+        ctx.globalAlpha = trailAlpha;
+        for(const [dc,dr] of piece.cells){
+          const vr = trailRow + dr - BUFFER;
+          if(vr > -2 && vr < ROWS){
+            ctx.fillStyle = piece.color;
+            ctx.beginPath();
+            ctx.roundRect((piece.col+dc)*CELL+2, GRID_TOP+vr*CELL+2, CELL-4, CELL-4, CELL*0.15);
+            ctx.fill();
+          }
+        }
+      }
+      ctx.globalAlpha = 1;
+    }
+
     const alpha=piece.invincible?(Math.sin(frameCount*.25)>0?1:.3):1;
     ctx.globalAlpha=alpha;
     for(const [dc,dr] of piece.cells){
@@ -1760,7 +1823,7 @@ function startGame(){
   cubeEnabled=true; projAccum=0; godMode=false;
   totalPieces=0; bestClear=0; cubesDodged=0; bestCombo=0; lineCombo=0;
   sessionAch.clear(); tutorialShown.clear(); tutorialPause=false;
-  projs.length=0; particles.length=0; lineEffects.length=0;
+  projs.length=0; particles.length=0; lineEffects.length=0; dropFlashes.length=0;
   resetGrid();
   initCosmos();
   initBgParticles();
