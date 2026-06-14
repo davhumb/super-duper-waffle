@@ -89,7 +89,7 @@ html,body{width:100%;height:100%;min-height:100dvh;background:var(--bg);overflow
     <div style="position:absolute;inset:0;background:linear-gradient(to bottom,rgba(0,0,0,0.1) 0%,rgba(0,0,0,0) 30%,rgba(0,0,0,0) 50%,rgba(10,5,2,0.88) 78%,rgba(10,5,2,0.97) 100%);pointer-events:none"></div>
     <!-- Titre centré -->
     <div style="position:absolute;top:50%;left:0;right:0;transform:translateY(-160%);text-align:center;padding:0 16px">
-      <div style="font-family:'Georgia',serif;font-size:42px;font-weight:900;letter-spacing:2px;color:#f5a623;text-shadow:3px 3px 0 #8B4513,0 0 20px rgba(245,166,35,0.8),-1px -1px 0 #8B4513;line-height:1.1">SUPA DOOPA<br>WAFFLES</div>
+      <div style="font-family:'Georgia',serif;font-size:26px;font-weight:900;letter-spacing:2px;color:#f5a623;text-shadow:3px 3px 0 #8B4513,0 0 20px rgba(245,166,35,0.8),-1px -1px 0 #8B4513;line-height:1.1">SUPA DOOPA<br>WAFFLES</div>
     </div>
     <!-- Boutons en bas -->
     <div style="position:absolute;bottom:0;left:0;right:0;display:flex;flex-direction:column;align-items:center;padding:20px 24px 28px;gap:8px">
@@ -341,9 +341,10 @@ function spawnPiece(){
   piece.floatRow=-1.5;
   piece.vy=-2.5; // légère impulsion vers le haut au spawn
   piece.locked=false;
+  piece.frozen=false; piece.freezeTimer=0;
   piece.pieceTimer = Math.max(8.0, PIECE_TIME_BASE - (currentLevel - 1) * 0.8);
   piece.invincible=true;
-  piece.invTimer=1.2; // 1.2s d'immunité au spawn
+  piece.invTimer=1.2;
   // Si un proj est déjà dans la zone → 1.8s
   for(const p of projs){
     const pw = p.type==='cube' ? p.size : (Math.max(...p.cells.map(c=>c[0]))+1)*p.cellSize;
@@ -380,8 +381,7 @@ let cubeEnabled=true;
 
 // Retourne la config du niveau courant
 function levelConfig(lv){
-  // vitesse px/s : 80 niv1 → 260 niv15+, linéaire
-  const spd = Math.min(260, 80 + (lv-1) * 12);
+  const spd = Math.min(280, 80 + (lv-1) * 15);
   if(lv >= 15) return { cubes:1, pieces:1, spd };
   if(lv >= 10) return { cubes:0, pieces:1, spd };
   if(lv >= 7)  return { cubes:3, pieces:0, spd };
@@ -389,14 +389,88 @@ function levelConfig(lv){
   return         { cubes:1, pieces:0, spd };
 }
 
-// Délai entre spawns — s'adapte au nombre de projectiles actifs
+// Types de cubes disponibles par niveau
+function cubeTypes(lv){
+  const types = ['red'];
+  if(lv >= 2) types.push('white');
+  if(lv >= 3) types.push('gravity');
+  if(lv >= 4) types.push('freeze');
+  return types;
+}
+
 function projDelay(lv){
   const cfg = levelConfig(lv);
   const total = cfg.cubes + cfg.pieces;
-  // Base : 4s niv1 → 1.2s niv9, stable après
   const base = Math.max(1.2, 4.0 - (lv-1)*0.35);
-  // Divisé par nombre de slots pour maintenir la pression
   return base / Math.max(1, total);
+}
+
+// ── Tutoriels par stage ──────────────────────────────────────
+const STAGE_TUTORIALS = {
+  1: { icon:'🔴', title:'CUBE ROUGE',    desc:'Touche = Game Over\nÉvite-les !' },
+  2: { icon:'⬜', title:'CUBE BLANC',    desc:'Touche = Absorption\nFaçonne ta pièce !' },
+  3: { icon:'🔵', title:'CUBE GRAVITÉ',  desc:'T\'attire vers lui\nRésiste !' },
+  4: { icon:'🧊', title:'CUBE GELÉ',     desc:'Rotation bloquée 1.5s\nAnticipe !' },
+};
+
+let tutorialShown = new Set();
+let tutorialPause = false;
+
+function showStageTutorial(lv){
+  if(!STAGE_TUTORIALS[lv]) return;
+  if(tutorialShown.has(lv)) return;
+  tutorialShown.add(lv);
+
+  tutorialPause = true; // pause le jeu
+
+  const t = STAGE_TUTORIALS[lv];
+  const el = document.createElement('div');
+  el.style.cssText = `
+    position:fixed;top:50%;left:50%;transform:translate(-50%,-50%) scale(0);
+    background:linear-gradient(135deg,rgba(20,10,0,.97),rgba(50,25,0,.97));
+    border:2px solid #f5a623;border-radius:16px;padding:24px 32px;
+    text-align:center;z-index:50;pointer-events:none;
+    box-shadow:0 0 60px rgba(245,166,35,.5);
+    font-family:'Georgia',serif;
+    transition:transform .4s cubic-bezier(.34,1.56,.64,1);
+    min-width:220px;
+  `;
+  el.innerHTML = `
+    <div style="font-size:48px;margin-bottom:8px">${t.icon}</div>
+    <div style="font-size:9px;color:#c8a060;letter-spacing:3px;margin-bottom:4px">STAGE ${lv} — NOUVEAU CUBE</div>
+    <div style="font-size:18px;font-weight:900;color:#f5a623;text-shadow:0 0 10px #f5a623;letter-spacing:1px;margin-bottom:10px">${t.title}</div>
+    <div style="font-size:13px;color:#ffe8c0;line-height:1.7;white-space:pre-line">${t.desc}</div>
+    <div style="font-size:9px;color:#888;margin-top:12px;letter-spacing:2px">REPRISE DANS 3s</div>
+  `;
+  document.getElementById('gc').appendChild(el);
+  setTimeout(()=> el.style.transform='translate(-50%,-50%) scale(1)', 30);
+
+  // Compte à rebours
+  let remaining = 3;
+  const countdown = setInterval(()=>{
+    remaining--;
+    const cd = el.querySelector('div:last-child');
+    if(cd) cd.textContent = remaining > 0 ? `REPRISE DANS ${remaining}s` : 'GO !';
+    if(remaining <= 0){
+      clearInterval(countdown);
+      el.style.transition = 'transform .3s ease-in, opacity .3s';
+      el.style.transform = 'translate(-50%,-50%) scale(0.8)';
+      el.style.opacity = '0';
+      setTimeout(()=>{ el.remove(); tutorialPause = false; }, 350);
+    }
+  }, 1000);
+}
+
+function checkLevel(){
+  const lv = Math.floor(lines / 5) + 1; // niveau toutes les 5 lignes
+  if(lv > currentLevel){
+    currentLevel = lv;
+    speedMult = Math.min(1.8, 1.0 + (lv-1) * 0.08);
+    checkMusicTrack();
+    showFlash(`STAGE ${lv}`, '#f5a623');
+    showStageTutorial(lv);
+    devLog(`⬆ Stage ${lv} speed:${speedMult.toFixed(2)}`,'lw');
+  }
 }
 
 function spawnProj(){
@@ -416,9 +490,15 @@ function spawnProj(){
 
   const spd = (cfg.spd + Math.random()*30) * speedMult;
 
-  // Probabilité cube blanc : 35% niv1, descend à 15% niv10+
-  const whiteChance = Math.max(0.12, 0.35 - (currentLevel-1)*0.025);
-  const isWhite = !doPiece && Math.random() < whiteChance;
+  const types = cubeTypes(currentLevel);
+  // Choisir un type selon le niveau (red plus fréquent)
+  const weights = types.map(t => t==='red' ? 3 : 1);
+  const total2 = weights.reduce((a,b)=>a+b,0);
+  let rnd = Math.random()*total2, chosenType='red';
+  for(let i=0;i<types.length;i++){ rnd-=weights[i]; if(rnd<=0){chosenType=types[i];break;} }
+  const isWhite   = !doPiece && chosenType==='white';
+  const isGravity = !doPiece && chosenType==='gravity';
+  const isFreeze  = !doPiece && chosenType==='freeze';
 
   if(doPiece){
     const pKey = PKEYS[Math.floor(Math.random()*PKEYS.length)];
@@ -434,14 +514,17 @@ function spawnProj(){
       pending: true, warnTimer: 2.0,
     });
   } else if(isWhite){
-    projs.push({
-      type:'cube', subtype:'white',
-      x: left ? -CELL : DW,
-      y: py, spd, dir: left?1:-1,
-      size: CELL, dead:false, hit:false,
-      pending: true, warnTimer: 2.0,
-      color: '#e8f0ff',
-    });
+    projs.push({ type:'cube', subtype:'white',
+      x:left?-CELL:DW, y:py, spd, dir:left?1:-1,
+      size:CELL, dead:false, hit:false, pending:true, warnTimer:2.0, color:'#e8f0ff' });
+  } else if(isGravity){
+    projs.push({ type:'cube', subtype:'gravity',
+      x:left?-CELL:DW, y:py, spd, dir:left?1:-1,
+      size:CELL, dead:false, hit:false, pending:true, warnTimer:2.0 });
+  } else if(isFreeze){
+    projs.push({ type:'cube', subtype:'freeze',
+      x:left?-CELL:DW, y:py, spd, dir:left?1:-1,
+      size:CELL, dead:false, hit:false, pending:true, warnTimer:2.0 });
   } else {
     projs.push({
       type:'cube', subtype:'red',
@@ -1014,6 +1097,7 @@ function update(dt){
   // Pièce
   if(!piece.locked){
     if(piece.invincible){ piece.invTimer-=dt; if(piece.invTimer<=0) piece.invincible=false; }
+    if(piece.frozen){ piece.freezeTimer-=dt; if(piece.freezeTimer<=0){ piece.frozen=false; } }
 
     // Timer de bloc
     piece.pieceTimer -= dt;
@@ -1107,14 +1191,25 @@ function update(dt){
       }
       if(hit){
         if(proj.subtype === 'white'){
-          // Cube blanc : fusion avec la pièce
           proj.dead = true;
           const merged = mergeWhiteCube(proj);
           if(merged){
             spawnFx(proj.x + proj.size/2, proj.y + proj.size/2, '#e8f0ff', 10);
             showFlash('✚ FUSION!', '#e8f0ff');
-            devLog('✚ Cube blanc fusionné','li');
           }
+        } else if(proj.subtype === 'gravity'){
+          proj.dead = true;
+          const pullDir = proj.dir === 1 ? 1 : -1;
+          piece.col = Math.max(0, Math.min(COLS - Math.max(...piece.cells.map(c=>c[0])) - 1, piece.col + pullDir * 2));
+          piece.vy = Math.min(piece.vy + 3, MAX_FALL);
+          spawnFx(proj.x+proj.size/2, proj.y+proj.size/2, '#4488ff', 14);
+          showFlash('🔵 ATTRACTION!', '#4488ff');
+        } else if(proj.subtype === 'freeze'){
+          proj.dead = true;
+          piece.frozen = true;
+          piece.freezeTimer = 1.5;
+          spawnFx(proj.x+proj.size/2, proj.y+proj.size/2, '#aaddff', 14);
+          showFlash('🧊 GELÉ!', '#aaddff');
         } else {
           // Cube rouge : game over
           proj.dead=true; proj.hit=true;
@@ -1468,6 +1563,17 @@ function draw(){
       if(vr>-1.8) drawCell((piece.col+dc)*CELL,GRID_TOP+vr*CELL,CELL,piece.color);
     }
     ctx.globalAlpha=1;
+    // Overlay gel cyan pulsant
+    if(piece.frozen){
+      const pulse=0.25+0.2*Math.sin(frameCount*0.45);
+      ctx.globalAlpha=pulse;
+      ctx.fillStyle='#aaeeff';
+      for(const [dc,dr] of piece.cells){
+        const vr=piece.floatRow+dr-BUFFER;
+        if(vr>-1.8){ ctx.beginPath(); ctx.roundRect((piece.col+dc)*CELL+1,GRID_TOP+vr*CELL+1,CELL-2,CELL-2,CELL*0.15); ctx.fill(); }
+      }
+      ctx.globalAlpha=1;
+    }
     if(dbg.hitbox){
       ctx.strokeStyle='#0f0'; ctx.lineWidth=1;
       const pr=piece.floatRow;
@@ -1522,9 +1628,42 @@ function draw(){
         ctx.strokeStyle='rgba(60,0,0,0.8)'; ctx.lineWidth=1.5;
         ctx.beginPath(); ctx.roundRect(proj.x+.5,proj.y+.5,proj.size-1,proj.size-1,r); ctx.stroke();
       }
-      if(dbg.hitbox){ ctx.strokeStyle='#ff0'; ctx.strokeRect(proj.x,proj.y,proj.size,proj.size); }
-    } else {
-      // Pièce projectile
+      } else if(proj.subtype==='gravity'){
+        // Cube gravité — bleu violet avec spirale
+        const r=proj.size*0.2;
+        const g=ctx.createLinearGradient(proj.x,proj.y,proj.x+proj.size,proj.y+proj.size);
+        g.addColorStop(0,'#6644ff'); g.addColorStop(0.5,'#3322cc'); g.addColorStop(1,'#110088');
+        ctx.fillStyle=g;
+        ctx.beginPath(); ctx.roundRect(proj.x,proj.y,proj.size,proj.size,r); ctx.fill();
+        // Reflet
+        ctx.fillStyle='rgba(180,160,255,0.4)';
+        ctx.fillRect(proj.x+2,proj.y+2,proj.size*0.5,proj.size*0.2);
+        // Symbole attraction
+        ctx.fillStyle='rgba(200,180,255,0.95)';
+        ctx.font=`900 ${Math.floor(proj.size*0.55)}px Arial`;
+        ctx.textAlign='center'; ctx.textBaseline='middle';
+        ctx.fillText('⟳',proj.x+proj.size/2,proj.y+proj.size/2);
+        ctx.textAlign='left'; ctx.textBaseline='alphabetic';
+        ctx.strokeStyle='rgba(100,80,255,0.8)'; ctx.lineWidth=1.5;
+        ctx.beginPath(); ctx.roundRect(proj.x+.5,proj.y+.5,proj.size-1,proj.size-1,r); ctx.stroke();
+      } else if(proj.subtype==='freeze'){
+        // Cube gel — cyan glacé
+        const r=proj.size*0.2;
+        const g=ctx.createLinearGradient(proj.x,proj.y,proj.x+proj.size,proj.y+proj.size);
+        g.addColorStop(0,'#aaeeff'); g.addColorStop(0.5,'#44aacc'); g.addColorStop(1,'#006688');
+        ctx.fillStyle=g;
+        ctx.beginPath(); ctx.roundRect(proj.x,proj.y,proj.size,proj.size,r); ctx.fill();
+        ctx.fillStyle='rgba(255,255,255,0.6)';
+        ctx.fillRect(proj.x+2,proj.y+2,proj.size*0.45,proj.size*0.2);
+        ctx.fillStyle='rgba(0,50,80,0.9)';
+        ctx.font=`900 ${Math.floor(proj.size*0.55)}px Arial`;
+        ctx.textAlign='center'; ctx.textBaseline='middle';
+        ctx.fillText('❄',proj.x+proj.size/2,proj.y+proj.size/2);
+        ctx.textAlign='left'; ctx.textBaseline='alphabetic';
+        ctx.strokeStyle='rgba(100,220,255,0.8)'; ctx.lineWidth=1.5;
+        ctx.beginPath(); ctx.roundRect(proj.x+.5,proj.y+.5,proj.size-1,proj.size-1,r); ctx.stroke();
+      } else {
+        // Pièce projectile
       const cs=proj.cellSize;
       for(const [pc,pr] of proj.cells){
         drawCell(proj.x+pc*cs, proj.y+pr*cs, cs, proj.color);
@@ -1607,6 +1746,7 @@ function gameLoop(ts){
   if(gameState!=='playing') return;
   if(devOpen){ draw(); requestAnimationFrame(gameLoop); return; }
   if(lastTS===0){ lastTS=ts; requestAnimationFrame(gameLoop); return; }
+  if(tutorialPause){ lastTS=ts; requestAnimationFrame(gameLoop); return; }
   const dt=Math.min((ts-lastTS)/1000,.1);
   lastTS=ts; lastDt=dt;
   update(dt); draw();
@@ -1619,7 +1759,7 @@ function startGame(){
   stopMusic();
   cubeEnabled=true; projAccum=0; godMode=false;
   totalPieces=0; bestClear=0; cubesDodged=0; bestCombo=0; lineCombo=0;
-  sessionAch.clear();
+  sessionAch.clear(); tutorialShown.clear(); tutorialPause=false;
   projs.length=0; particles.length=0; lineEffects.length=0;
   resetGrid();
   initCosmos();
@@ -1639,6 +1779,7 @@ function startGame(){
   if(audioCtx) audioCtx.resume().then(startMusic);
   devLog('▶ Partie','li');
   requestAnimationFrame(gameLoop);
+  setTimeout(()=> showStageTutorial(1), 500);
 }
 
 function gameOver(){
@@ -1670,6 +1811,7 @@ function moveLeft(){ if(!piece.locked&&canPlace(piece.cells,piece.col-1,Math.flo
 function moveRight(){ if(!piece.locked&&canPlace(piece.cells,piece.col+1,Math.floor(piece.floatRow))) piece.col++; }
 function rotatePiece(){
   if(piece.locked) return;
+  if(piece.frozen){ showFlash('🧊 GELÉ!','#aaddff'); return; }
   const rot=rotateCW(piece.cells);
   for(const k of [0,-1,1,-2,2]){
     if(canPlace(rot,piece.col+k,Math.floor(piece.floatRow))){ piece.cells=rot; piece.col+=k; rotateProjPieces(); return; }
