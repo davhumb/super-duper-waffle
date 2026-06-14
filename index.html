@@ -456,54 +456,53 @@ function spawnProj(){
 // Fusionner un cube blanc à la pièce joueur
 function mergeWhiteCube(proj){
   try {
-    const fromLeft = proj.dir === 1; // vient de gauche → impact côté droit
-    const maxCol = Math.max(...piece.cells.map(c=>c[0]));
-    const minCol = Math.min(...piece.cells.map(c=>c[0]));
+    const fromLeft = proj.dir === 1; // cube vient de gauche → s'accroche à droite
 
-    // Position verticale du cube dans l'espace "pièce"
-    const cubeYCanvas = proj.y + proj.size/2;
+    // Position Y du cube dans l'espace local de la pièce
+    const cubeYCanvas  = proj.y + proj.size / 2;
     const pieceTopCanvas = GRID_TOP + (piece.floatRow - BUFFER) * CELL;
     const relRow = Math.round((cubeYCanvas - pieceTopCanvas) / CELL);
-    const clampedRow = Math.max(0, Math.min(3, relRow));
 
-    // Colonne d'accrochage : juste à côté du bord de la pièce
-    const attachCol = fromLeft ? maxCol + 1 : minCol - 1;
-
-    // Trouver une rangée libre autour de clampedRow
+    // Trouver toutes les cellules de bord du côté de l'impact
+    // et garder celle dont la rangée est la plus proche du cube
     const existingSet = new Set(piece.cells.map(([c,r])=>`${c},${r}`));
-    let foundRow = -1;
-    for(const dr of [0, -1, 1, -2, 2]){
-      const r = clampedRow + dr;
-      if(r < 0 || r > 5) continue;
-      if(!existingSet.has(`${attachCol},${r}`)){ foundRow = r; break; }
+    let bestCell = null;
+    let bestDist = Infinity;
+
+    for(const [c, r] of piece.cells){
+      // Vérifier si c'est une cellule de bord (pas de voisin du côté de l'impact)
+      const neighborCol = fromLeft ? c + 1 : c - 1;
+      if(existingSet.has(`${neighborCol},${r}`)) continue; // a un voisin → pas un bord
+
+      const dist = Math.abs(r - relRow);
+      if(dist < bestDist){
+        bestDist = dist;
+        bestCell = [neighborCol, r];
+      }
     }
-    if(foundRow === -1){ showFlash('TROP GROS!','#ff8800'); return false; }
 
-    // Nouvelle cellule dans l'espace local non normalisé
-    const newCell = [attachCol, foundRow];
-    const allCells = [...piece.cells, newCell];
+    if(!bestCell){ showFlash('TROP GROS!','#ff8800'); return false; }
 
-    // Normaliser pour remettre minX=0, minY=0
+    const [nc, nr] = bestCell;
+    const allCells = [...piece.cells, [nc, nr]];
+
+    // Normaliser
     const mx = Math.min(...allCells.map(c=>c[0]));
     const my = Math.min(...allCells.map(c=>c[1]));
     const normalized = allCells.map(([c,r])=>[c-mx, r-my]);
     const newMaxCol = Math.max(...normalized.map(c=>c[0]));
-
-    // Ajuster piece.col pour compenser le décalage de normalisation
     const newCol = piece.col + mx;
 
-    // Vérifier que ça rentre dans la grille
     if(newCol < 0 || newCol + newMaxCol >= COLS){
       showFlash('TROP GROS!','#ff8800');
       return false;
     }
 
-    // Appliquer
     piece.cells = normalized;
     piece.col   = newCol;
     return true;
-  } catch(e) {
-    devLog('mergeWhiteCube error: '+e.message, 'le');
+  } catch(e){
+    devLog('mergeWhiteCube error: '+e.message,'le');
     return false;
   }
 }
