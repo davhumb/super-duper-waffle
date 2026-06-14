@@ -988,16 +988,20 @@ function update(dt){
       let hit=false;
       if(proj.type==='cube'){
         for(const [dc,dr] of piece.cells){
-          const cx=(piece.col+dc)*CELL, cy=GRID_TOP+(pRow+dr-BUFFER)*CELL;
-          if(proj.x<cx+CELL&&proj.x+proj.size>cx&&proj.y<cy+CELL&&proj.y+proj.size>cy){ hit=true; break; }
+          const cx = (piece.col + dc) * CELL;
+          const cy = GRID_TOP + (piece.floatRow + dr - BUFFER) * CELL;
+          if(proj.x < cx+CELL && proj.x+proj.size > cx &&
+             proj.y < cy+CELL && proj.y+proj.size > cy){ hit=true; break; }
         }
       } else {
-        // Pièce vs pièce : AABB de chaque cellule
         for(const [dc,dr] of piece.cells){
-          const cx=(piece.col+dc)*CELL, cy=GRID_TOP+(pRow+dr-BUFFER)*CELL;
+          const cx = (piece.col + dc) * CELL;
+          const cy = GRID_TOP + (piece.floatRow + dr - BUFFER) * CELL;
           for(const [pc,pr] of proj.cells){
-            const px2=proj.x+pc*proj.cellSize, py2=proj.y+pr*proj.cellSize;
-            if(px2<cx+CELL&&px2+proj.cellSize>cx&&py2<cy+CELL&&py2+proj.cellSize>cy){ hit=true; break; }
+            const px2 = proj.x + pc * proj.cellSize;
+            const py2 = proj.y + pr * proj.cellSize;
+            if(px2 < cx+CELL && px2+proj.cellSize > cx &&
+               py2 < cy+CELL && py2+proj.cellSize > cy){ hit=true; break; }
           }
           if(hit) break;
         }
@@ -1095,7 +1099,6 @@ function checkLevel(){
     currentLevel=lv;
     speedMult=Math.min(1.8, 1.0+(lv-1)*.1);
     checkMusicTrack(); // switcher la piste si besoin
-    if(musicOn) startBeat();
     const cfg=levelConfig(lv);
     let msg='';
     if(lv===4)  msg='NIVEAU 4 — 2 CUBES!';
@@ -1267,33 +1270,6 @@ function draw(){
   getActiveBgSkin().draw(lastDt);
 
   // ── Warning bords (clignotement avant arrivée d'un proj) ──
-  if(gameState==='playing'){
-    let warnLeft=0, warnRight=0;
-    for(const p of projs){
-      if(!p.pending || p.dead) continue;
-      // Intensité qui monte vers 1 quand warnTimer approche 0
-      const intensity = Math.max(0, 1 - p.warnTimer / 2.0);
-      const blink = Math.sin(frameCount * 0.4) > 0 ? 1 : 0.25;
-      const alpha = Math.max(0.1, intensity) * blink * 0.75;
-      if(p.dir === 1)  warnLeft  = Math.max(warnLeft,  alpha);
-      if(p.dir === -1) warnRight = Math.max(warnRight, alpha);
-    }
-    if(warnLeft > 0){
-      const grd = ctx.createLinearGradient(0,0,50,0);
-      grd.addColorStop(0, `rgba(255,30,30,${warnLeft})`);
-      grd.addColorStop(1, 'rgba(255,30,30,0)');
-      ctx.fillStyle = grd;
-      ctx.fillRect(0, GRID_TOP, 50, GRID_H);
-    }
-    if(warnRight > 0){
-      const grd = ctx.createLinearGradient(DW,0,DW-50,0);
-      grd.addColorStop(0, `rgba(255,30,30,${warnRight})`);
-      grd.addColorStop(1, 'rgba(255,30,30,0)');
-      ctx.fillStyle = grd;
-      ctx.fillRect(DW-50, GRID_TOP, 50, GRID_H);
-    }
-  }
-
   // Fond grille — brun chaud translucide (moule à gaufres)
   ctx.fillStyle='rgba(12,6,2,0.88)';
   ctx.fillRect(0,GRID_TOP,GRID_W,GRID_H);
@@ -1306,6 +1282,34 @@ function draw(){
   // Bordure gaufrier dorée
   ctx.strokeStyle='rgba(220,150,30,0.7)'; ctx.lineWidth=2;
   ctx.strokeRect(0,GRID_TOP,GRID_W,GRID_H);
+
+  // ── Warning bords (dessiné APRÈS le fond pour être visible) ──
+  if(gameState==='playing'){
+    let warnLeft=0, warnRight=0;
+    for(const p of projs){
+      if(!p.pending || p.dead) continue;
+      const urgency = 1 - p.warnTimer / 2.0;
+      const blinkSpeed = 0.15 + urgency * 0.45;
+      const blink = Math.sin(frameCount * blinkSpeed * Math.PI) > 0 ? 1 : 0.15;
+      const alpha = (0.12 + urgency * 0.22) * blink;
+      if(p.dir === 1)  warnLeft  = Math.max(warnLeft,  alpha);
+      if(p.dir === -1) warnRight = Math.max(warnRight, alpha);
+    }
+    if(warnLeft > 0){
+      const grd = ctx.createLinearGradient(0,0,70,0);
+      grd.addColorStop(0, `rgba(255,30,30,${warnLeft})`);
+      grd.addColorStop(1, 'rgba(255,30,30,0)');
+      ctx.fillStyle = grd;
+      ctx.fillRect(0, GRID_TOP, 70, GRID_H);
+    }
+    if(warnRight > 0){
+      const grd = ctx.createLinearGradient(DW,0,DW-70,0);
+      grd.addColorStop(0, `rgba(255,30,30,${warnRight})`);
+      grd.addColorStop(1, 'rgba(255,30,30,0)');
+      ctx.fillStyle = grd;
+      ctx.fillRect(DW-70, GRID_TOP, 70, GRID_H);
+    }
+  }
 
   // Effets lignes (flash blanc sur les lignes en cours d'effacement)
   for(const ef of lineEffects){
