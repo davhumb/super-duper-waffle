@@ -84,21 +84,22 @@ html,body{width:100%;height:100%;min-height:100dvh;background:var(--bg);overflow
   <div id="achiev"></div>
 
   <!-- TITLE -->
-  <div class="screen" id="sTit">
-    <!-- Gaufres déco -->
-    <div style="font-size:48px;margin-bottom:-10px;filter:drop-shadow(0 0 12px #f5a623)">🧇</div>
-    <div class="st" style="color:#f5a623;text-shadow:0 0 15px #f5a623,0 0 40px #f5a623,0 0 80px rgba(245,166,35,0.5);font-size:38px">SUPA DOOPA<br>WAFFLES</div>
-    <div class="ss" style="color:#ffe8a0;text-shadow:0 0 10px #f5a623;margin-top:4px">✨ Tetris × Flappy Bird ✨</div>
-    <div class="sp" style="color:#ff2d9b;text-shadow:0 0 10px #ff2d9b,0 0 25px #ff2d9b;letter-spacing:4px;font-size:9px;margin-bottom:16px">Celluloïd Scalpel Production</div>
-    <div class="sd" style="color:#ffe8c0;font-size:12px;line-height:1.9;margin-bottom:18px">
-      Tap pour voler · Double-tap pour pivoter<br>
-      Swipe G/D pour déplacer<br>
-      <span style="color:#ff8888">1 vie · Les cubes = game over !</span>
+  <div class="screen" id="sTit" style="background:url('https://raw.githubusercontent.com/davhumb/super-duper-waffle/refs/heads/main/landing.png') center/cover no-repeat;padding:0;">
+    <div style="position:absolute;inset:0;background:linear-gradient(to bottom,rgba(0,0,0,0.2) 0%,rgba(0,0,0,0) 25%,rgba(0,0,0,0) 45%,rgba(10,5,2,0.85) 75%,rgba(10,5,2,0.95) 100%);pointer-events:none"></div>
+    <!-- Titre en haut -->
+    <div style="position:absolute;top:28px;left:0;right:0;text-align:center">
+      <div style="font-size:34px;font-weight:900;letter-spacing:3px;color:#f5a623;text-shadow:0 0 12px #f5a623,0 0 30px rgba(245,166,35,0.6),2px 2px 0 rgba(0,0,0,0.7);line-height:1.15">SUPA DOOPA<br>WAFFLES</div>
     </div>
-    <button class="btn" id="btnS" style="border-color:#f5a623;color:#f5a623;box-shadow:0 0 20px rgba(245,166,35,.5);text-shadow:0 0 8px #f5a623">🧇 JOUER</button>
-    <button class="btn" id="btnLB" style="margin-top:10px;font-size:12px;padding:10px 28px;border-color:#cc44ff;color:#cc44ff;box-shadow:0 0 12px rgba(204,68,255,.4)">🏆 SCORES</button>
-    <button class="btn" id="btnSkinsOpen" style="margin-top:8px;font-size:12px;padding:10px 28px;border-color:#f5a623;color:#f5a623;box-shadow:0 0 12px rgba(245,166,35,.4)">🎨 SKINS</button>
-    <div style="margin-top:12px;font-size:12px;color:#c8a060;letter-spacing:3px;font-weight:bold">BEST <span id="tB" style="color:#f5a623;text-shadow:0 0 8px #f5a623">0</span></div>
+    <!-- Boutons en bas -->
+    <div style="position:absolute;bottom:0;left:0;right:0;display:flex;flex-direction:column;align-items:center;padding:24px 24px 32px;gap:8px">
+      <div class="sp" style="color:#ff2d9b;text-shadow:0 0 10px #ff2d9b,0 0 25px #ff2d9b;letter-spacing:4px;font-size:9px;margin-bottom:4px">Celluloïd Scalpel Production</div>
+      <button class="btn" id="btnS" style="border-color:#f5a623;color:#f5a623;box-shadow:0 0 20px rgba(245,166,35,.6);text-shadow:0 0 8px #f5a623;font-size:16px;padding:14px 44px">🧇 JOUER</button>
+      <div style="display:flex;gap:8px;margin-top:2px">
+        <button class="btn" id="btnLB" style="font-size:11px;padding:9px 18px;border-color:#cc44ff;color:#cc44ff;box-shadow:0 0 10px rgba(204,68,255,.4)">🏆 SCORES</button>
+        <button class="btn" id="btnSkinsOpen" style="font-size:11px;padding:9px 18px;border-color:#f5a623;color:#f5a623;box-shadow:0 0 10px rgba(245,166,35,.4)">🎨 SKINS</button>
+      </div>
+      <div style="font-size:11px;color:#c8a060;letter-spacing:3px;font-weight:bold;margin-top:2px">BEST <span id="tB" style="color:#f5a623;text-shadow:0 0 8px #f5a623">0</span></div>
+    </div>
   </div>
 
   <!-- GAME OVER -->
