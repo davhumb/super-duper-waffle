@@ -16,8 +16,8 @@
 <style>
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
 :root{--bg:#0a0a0f;--cy:#00f5ff;--mg:#ff006e;--am:#ffd60a;--vi:#7b2fff;--gn:#39ff14;--wh:#ffffff;--gr:#8888bb}
-html,body{width:100%;height:100%;background:var(--bg);overflow:hidden;font-family:'Courier New',monospace;touch-action:none}
-#gc{position:relative;width:100vw;height:100vh;display:flex;align-items:center;justify-content:center}
+html,body{width:100%;height:100%;min-height:100dvh;background:var(--bg);overflow:hidden;font-family:'Courier New',monospace;touch-action:none}
+#gc{position:fixed;inset:0;width:100%;height:100%;display:flex;align-items:center;justify-content:center}
 #cvs{display:block;touch-action:none;cursor:pointer}
 #hud{position:absolute;top:0;left:0;right:0;padding:4px 8px;display:flex;justify-content:space-between;pointer-events:none;z-index:10}
 .hb{background:rgba(0,0,0,.7);border:1px solid rgba(255,255,255,.2);padding:2px 8px;border-radius:3px}
@@ -85,14 +85,20 @@ html,body{width:100%;height:100%;background:var(--bg);overflow:hidden;font-famil
 
   <!-- TITLE -->
   <div class="screen" id="sTit">
-    <div class="st">SUPA DOOPA<br>WAFFLES</div>
-    <div class="ss">Tetris × Flappy Bird</div>
-    <div class="sp" style="color:#ff2d9b;text-shadow:0 0 10px #ff2d9b,0 0 25px #ff2d9b,0 0 50px #ff2d9b;letter-spacing:4px;font-size:9px;">Celluloïd Scalpel Production</div>
-    <div class="sd">Tap pour voler · Double-tap pour pivoter<br>Swipe G/D pour déplacer<br>1 vie · Les cubes = game over !</div>
-    <button class="btn" id="btnS">▶ JOUER</button>
-    <button class="btn" id="btnLB" style="margin-top:12px;font-size:12px;padding:10px 28px;border-color:#cc44ff;color:#cc44ff;box-shadow:0 0 15px rgba(204,68,255,.4)">🏆 SCORES</button>
-    <button class="btn" id="btnSkinsOpen" style="margin-top:8px;font-size:12px;padding:10px 28px;border-color:#ffd60a;color:#ffd60a;box-shadow:0 0 15px rgba(255,214,10,.4)">🎨 SKINS</button>
-    <div style="margin-top:14px;font-size:12px;color:#aabbff;letter-spacing:3px;font-weight:bold">BEST <span id="tB" style="color:#ffd60a;text-shadow:0 0 8px #ffd60a">0</span></div>
+    <!-- Gaufres déco -->
+    <div style="font-size:48px;margin-bottom:-10px;filter:drop-shadow(0 0 12px #f5a623)">🧇</div>
+    <div class="st" style="color:#f5a623;text-shadow:0 0 15px #f5a623,0 0 40px #f5a623,0 0 80px rgba(245,166,35,0.5);font-size:38px">SUPA DOOPA<br>WAFFLES</div>
+    <div class="ss" style="color:#ffe8a0;text-shadow:0 0 10px #f5a623;margin-top:4px">✨ Tetris × Flappy Bird ✨</div>
+    <div class="sp" style="color:#ff2d9b;text-shadow:0 0 10px #ff2d9b,0 0 25px #ff2d9b;letter-spacing:4px;font-size:9px;margin-bottom:16px">Celluloïd Scalpel Production</div>
+    <div class="sd" style="color:#ffe8c0;font-size:12px;line-height:1.9;margin-bottom:18px">
+      Tap pour voler · Double-tap pour pivoter<br>
+      Swipe G/D pour déplacer<br>
+      <span style="color:#ff8888">1 vie · Les cubes = game over !</span>
+    </div>
+    <button class="btn" id="btnS" style="border-color:#f5a623;color:#f5a623;box-shadow:0 0 20px rgba(245,166,35,.5);text-shadow:0 0 8px #f5a623">🧇 JOUER</button>
+    <button class="btn" id="btnLB" style="margin-top:10px;font-size:12px;padding:10px 28px;border-color:#cc44ff;color:#cc44ff;box-shadow:0 0 12px rgba(204,68,255,.4)">🏆 SCORES</button>
+    <button class="btn" id="btnSkinsOpen" style="margin-top:8px;font-size:12px;padding:10px 28px;border-color:#f5a623;color:#f5a623;box-shadow:0 0 12px rgba(245,166,35,.4)">🎨 SKINS</button>
+    <div style="margin-top:12px;font-size:12px;color:#c8a060;letter-spacing:3px;font-weight:bold">BEST <span id="tB" style="color:#f5a623;text-shadow:0 0 8px #f5a623">0</span></div>
   </div>
 
   <!-- GAME OVER -->
@@ -188,8 +194,11 @@ const COLS=10, ROWS=18, BUFFER=2;
 const GRID_TOP=46;
 const TIMER_H=14;
 function calcCell(){
-  const cellH = Math.floor((window.innerHeight - GRID_TOP - TIMER_H - 4) / ROWS);
-  const cellW = Math.floor(window.innerWidth / COLS);
+  // dvh = dynamic viewport height (exclut la barre d'adresse sur mobile)
+  const h = window.visualViewport ? window.visualViewport.height : window.innerHeight;
+  const w = window.visualViewport ? window.visualViewport.width  : window.innerWidth;
+  const cellH = Math.floor((h - GRID_TOP - TIMER_H - 4) / ROWS);
+  const cellW = Math.floor(w / COLS);
   return Math.min(cellH, cellW);
 }
 let CELL=calcCell();
@@ -208,24 +217,41 @@ function resize(){
   nebulaCanvas=null;
 }
 resize();
+// visualViewport pour gérer la barre d'adresse mobile
+if(window.visualViewport){
+  window.visualViewport.addEventListener('resize', ()=>{
+    resize();
+    for(const p of projs){ if(p.type==='piece') p.cellSize=CELL; }
+  });
+}
 window.addEventListener('resize', ()=>{
   resize();
   for(const p of projs){ if(p.type==='piece') p.cellSize=CELL; }
 });
 
+// Fullscreen API — se déclenche au premier tap
+function tryFullscreen(){
+  const el = document.documentElement;
+  if(!document.fullscreenElement){
+    (el.requestFullscreen||el.webkitRequestFullscreen||el.mozRequestFullScreen||el.msRequestFullscreen||function(){}).call(el);
+  }
+}
+document.addEventListener('touchstart', ()=>{ initAudio(); if(!musicOn && gameState==='title') startMusic(); tryFullscreen(); }, {once:true});
+document.addEventListener('mousedown',  ()=>{ initAudio(); if(!musicOn && gameState==='title') startMusic(); tryFullscreen(); }, {once:true});
+
 // ── Palette ─────────────────────────────────────────────────
 const C={bg:'#0a0a0f',cy:'#00f5ff',mg:'#ff006e',am:'#ffd60a',
          vi:'#7b2fff',gn:'#39ff14',wh:'#e8e8f0',gr:'#3a3a5c',ni:'#0c0318'};
 
-// ── Pièces — palette cristal douce ──────────────────────────
+// ── Pièces — palette pâtisserie ─────────────────────────────
 const PIECES={
-  I:{cells:[[0,1],[1,1],[2,1],[3,1]],color:'#7ecfff'}, // bleu glacier
-  O:{cells:[[0,0],[1,0],[0,1],[1,1]],color:'#ffe080'}, // jaune soleil doux
-  T:{cells:[[1,0],[0,1],[1,1],[2,1]],color:'#c89aff'}, // lavande
-  S:{cells:[[1,0],[2,0],[0,1],[1,1]],color:'#80ffb8'}, // vert menthe
-  Z:{cells:[[0,0],[1,0],[1,1],[2,1]],color:'#ff8aab'}, // rose corail
-  L:{cells:[[2,0],[0,1],[1,1],[2,1]],color:'#ffb347'}, // orange pêche
-  J:{cells:[[0,0],[0,1],[1,1],[2,1]],color:'#80c8ff'}, // bleu pervenche
+  I:{cells:[[0,1],[1,1],[2,1],[3,1]],color:'#f5c842'}, // gaufre dorée
+  O:{cells:[[0,0],[1,0],[0,1],[1,1]],color:'#e8855a'}, // caramel brûlé
+  T:{cells:[[1,0],[0,1],[1,1],[2,1]],color:'#d4a0e0'}, // myrtille pastel
+  S:{cells:[[1,0],[2,0],[0,1],[1,1]],color:'#f08080'}, // coulis fraise
+  Z:{cells:[[0,0],[1,0],[1,1],[2,1]],color:'#88d4a0'}, // pistache
+  L:{cells:[[2,0],[0,1],[1,1],[2,1]],color:'#f5d090'}, // beurre fondu
+  J:{cells:[[0,0],[0,1],[1,1],[2,1]],color:'#a0c8f0'}, // chantilly bleue
 };
 const PKEYS=Object.keys(PIECES);
 function rotateCW(cells){
@@ -592,13 +618,39 @@ function drawBgMatrix(dt){
 
 // ── Skins pièces ─────────────────────────────────────────────
 function drawCellCrystal(x,y,cs,color){
-  ctx.fillStyle=color; ctx.fillRect(x+1,y+1,cs-2,cs-2);
-  ctx.fillStyle='rgba(0,0,10,0.18)'; ctx.fillRect(x+3,y+3,cs-6,cs-6);
-  ctx.fillStyle='rgba(255,255,255,0.55)'; ctx.fillRect(x+2,y+2,cs-4,3); ctx.fillRect(x+2,y+2,3,cs-4);
-  ctx.fillStyle='rgba(255,255,255,0.7)'; ctx.fillRect(x+3,y+3,4,4);
-  ctx.fillStyle='rgba(0,0,0,0.28)'; ctx.fillRect(x+1,y+cs-4,cs-2,3); ctx.fillRect(x+cs-4,y+1,3,cs-2);
-  ctx.strokeStyle='rgba(0,0,0,0.4)'; ctx.lineWidth=1; ctx.strokeRect(x+.5,y+.5,cs-1,cs-1);
-  ctx.strokeStyle='rgba(255,255,255,0.12)'; ctx.strokeRect(x+1.5,y+1.5,cs-3,cs-3);
+  // Corps coloré
+  ctx.fillStyle=color;
+  ctx.fillRect(x+1,y+1,cs-2,cs-2);
+
+  // Croisillons gaufre (texture principale)
+  const g = Math.floor(cs/3);
+  ctx.fillStyle='rgba(0,0,0,0.22)';
+  // Lignes verticales
+  for(let i=1;i<3;i++) ctx.fillRect(x+1+g*i-1, y+1, 2, cs-2);
+  // Lignes horizontales
+  for(let i=1;i<3;i++) ctx.fillRect(x+1, y+1+g*i-1, cs-2, 2);
+  // Carrés aux intersections (relief gaufre)
+  for(let i=1;i<3;i++) for(let j=1;j<3;j++){
+    ctx.fillStyle='rgba(0,0,0,0.15)';
+    ctx.fillRect(x+g*i-1, y+g*j-1, 4, 4);
+  }
+
+  // Reflet lustré (côté chaud du gaufre)
+  ctx.fillStyle='rgba(255,255,255,0.35)';
+  ctx.fillRect(x+2,y+2,cs-4,3);
+  ctx.fillRect(x+2,y+2,3,cs-4);
+  // Petit brillant coin
+  ctx.fillStyle='rgba(255,255,255,0.6)';
+  ctx.fillRect(x+3,y+3,3,3);
+
+  // Ombre bords
+  ctx.fillStyle='rgba(0,0,0,0.3)';
+  ctx.fillRect(x+1,y+cs-4,cs-2,3);
+  ctx.fillRect(x+cs-4,y+1,3,cs-2);
+
+  // Contour
+  ctx.strokeStyle='rgba(0,0,0,0.45)'; ctx.lineWidth=1;
+  ctx.strokeRect(x+.5,y+.5,cs-1,cs-1);
 }
 
 function drawCellMetal(x,y,cs,color){
@@ -737,139 +789,110 @@ const dbg={hitbox:false,fps:false,touch:false};
 
 // ── MUSIQUE (Web Audio) ──────────────────────────────────────
 // Mélange arpèges Tetris (gamme pentatonique) + pulsation Flappy
-let audioCtx=null, musicOn=false;
-let oscNodes=[], lfoNode=null, masterGain=null, beatIntervalId=null;
-
-// Notes : gamme pentatonique mineure (esprit Tetris oriental)
-const SCALE_HZ=[
-  261.63,311.13,349.23,392.00,466.16, // C4 Eb4 F4 G4 Bb4
-  523.25,622.25,698.46,783.99,932.33, // C5 ...
+// ── MUSIQUE MP3 ──────────────────────────────────────────────
+const TRACKS = [
+  'https://raw.githubusercontent.com/davhumb/super-duper-waffle/main/supa1.mp3', // niv 1
+  'https://raw.githubusercontent.com/davhumb/super-duper-waffle/main/supa2.mp3', // niv 2+
 ];
+
+let audioEl    = null; // élément <audio> actif
+let musicOn    = false;
+let currentTrackIdx = -1;
+let muted      = false;
+
+// Sons SFX via Web Audio (légers, pas de musique)
+let audioCtx   = null;
+let masterGain = null;
 
 function initAudio(){
   if(audioCtx) return;
   try{
-    audioCtx=new(window.AudioContext||window.webkitAudioContext)();
-    masterGain=audioCtx.createGain();
-    masterGain.gain.setValueAtTime(.18,audioCtx.currentTime);
+    audioCtx = new(window.AudioContext||window.webkitAudioContext)();
+    masterGain = audioCtx.createGain();
+    masterGain.gain.value = 0.25;
     masterGain.connect(audioCtx.destination);
-  }catch(e){ devLog('Audio non supporté','lw'); }
+  } catch(e){ devLog('SFX non supporté','lw'); }
+}
+
+function getTrackIdx(){
+  // supa1 = titre + niveau 1, supa2 = niveau 2+
+  if(gameState !== 'playing') return 0;
+  return currentLevel >= 2 ? 1 : 0;
 }
 
 function startMusic(){
-  if(!audioCtx||musicOn) return;
-  musicOn=true;
-  playArpeggio();
-  startBeat();
-  document.getElementById('dbMu').textContent='ON';
+  if(muted) return;
+  const idx = getTrackIdx();
+  if(musicOn && currentTrackIdx === idx) return; // déjà la bonne piste
+  stopMusic(false);
+  musicOn = true;
+  currentTrackIdx = idx;
+  if(!audioEl) audioEl = new Audio();
+  audioEl.src  = TRACKS[idx];
+  audioEl.loop = true;
+  audioEl.volume = 0.75;
+  audioEl.play().catch(()=>{}); // autoplay policy
+  document.getElementById('dbMu').textContent = 'ON';
+  devLog(`🎵 Track ${idx+1}: supa${idx+1}.mp3`,'li');
 }
 
-function stopMusic(){
-  if(!musicOn) return;
-  musicOn=false;
-  oscNodes.forEach(o=>{try{o.stop();}catch(e){}});
-  oscNodes=[];
-  if(beatIntervalId){ clearInterval(beatIntervalId); beatIntervalId=null; }
-  document.getElementById('dbMu').textContent='OFF';
+function stopMusic(resetTrack=true){
+  if(audioEl){ audioEl.pause(); if(resetTrack) audioEl.currentTime=0; }
+  musicOn = false;
+  if(resetTrack) currentTrackIdx = -1;
+  document.getElementById('dbMu').textContent = 'OFF';
 }
 
-// Arpège montant/descendant style Tetris
-let arpDir=1, arpIdx=0, arpSeq=[0,2,4,7,9,7,4,2];
-function playArpeggio(){
-  if(!musicOn||!audioCtx) return;
-  const now=audioCtx.currentTime;
-  const hz=SCALE_HZ[arpSeq[arpIdx]%SCALE_HZ.length];
-  arpIdx=(arpIdx+arpDir+arpSeq.length)%arpSeq.length;
-  if(arpIdx===0||arpIdx===arpSeq.length-1) arpDir*=-1;
-
-  const osc=audioCtx.createOscillator();
-  const g=audioCtx.createGain();
-  osc.type='square';
-  osc.frequency.setValueAtTime(hz,now);
-  g.gain.setValueAtTime(.0,now);
-  g.gain.linearRampToValueAtTime(.15,now+.02);
-  g.gain.exponentialRampToValueAtTime(.001,now+.18);
-  osc.connect(g); g.connect(masterGain);
-  osc.start(now); osc.stop(now+.2);
-  oscNodes.push(osc);
-  // Nettoyer
-  osc.onended=()=>{ oscNodes=oscNodes.filter(x=>x!==osc); };
-
-  const tempo=Math.max(80,160-(currentLevel-1)*10); // bpm monte avec niveaux
-  setTimeout(()=>{ if(musicOn) playArpeggio(); }, 60000/tempo);
+function checkMusicTrack(){
+  // Appelé à chaque changement de niveau pour switcher de piste si besoin
+  if(!musicOn || muted) return;
+  const idx = getTrackIdx();
+  if(idx !== currentTrackIdx) startMusic();
 }
 
-// Kick + hihat style Flappy (pulsation)
-function startBeat(){
-  if(beatIntervalId) clearInterval(beatIntervalId);
-  const bpm=Math.max(80,120-(currentLevel-1)*5);
-  beatIntervalId=setInterval(()=>{
-    if(!musicOn||!audioCtx) return;
-    playKick(); playHihat();
-  }, 60000/bpm);
+function toggleMute(){
+  muted = !muted;
+  const btn = document.getElementById('btnMute');
+  if(muted){
+    if(audioEl) audioEl.pause();
+    btn.textContent = '🔇';
+    devLog('🔇 Mute','lw');
+  } else {
+    btn.textContent = '🔊';
+    if(musicOn && audioEl){ audioEl.play().catch(()=>{}); }
+    devLog('🔊 Unmute','li');
+  }
 }
 
-function playKick(){
-  if(!audioCtx) return;
-  const now=audioCtx.currentTime;
-  const osc=audioCtx.createOscillator();
-  const g=audioCtx.createGain();
-  osc.frequency.setValueAtTime(150,now);
-  osc.frequency.exponentialRampToValueAtTime(40,now+.08);
-  g.gain.setValueAtTime(.4,now);
-  g.gain.exponentialRampToValueAtTime(.001,now+.12);
-  osc.connect(g); g.connect(masterGain);
-  osc.start(now); osc.stop(now+.13);
-}
-
-function playHihat(){
-  if(!audioCtx) return;
-  const now=audioCtx.currentTime+.07;
-  const buf=audioCtx.createBuffer(1,audioCtx.sampleRate*.05,audioCtx.sampleRate);
-  const d=buf.getChannelData(0);
-  for(let i=0;i<d.length;i++) d[i]=(Math.random()*2-1)*.3;
-  const src=audioCtx.createBufferSource();
-  const g=audioCtx.createGain();
-  const flt=audioCtx.createBiquadFilter();
-  flt.type='highpass'; flt.frequency.value=8000;
-  src.buffer=buf;
-  g.gain.setValueAtTime(.15,now);
-  g.gain.exponentialRampToValueAtTime(.001,now+.05);
-  src.connect(flt); flt.connect(g); g.connect(masterGain);
-  src.start(now);
-}
-
-// Son flap (courte note aiguë)
+// SFX Web Audio (courts, indépendants de la musique)
 function sndFlap(){
-  if(!audioCtx||!musicOn) return;
+  if(!audioCtx) return;
   const now=audioCtx.currentTime;
   const osc=audioCtx.createOscillator();
   const g=audioCtx.createGain();
-  osc.type='sine'; osc.frequency.setValueAtTime(880,now);
-  osc.frequency.exponentialRampToValueAtTime(440,now+.06);
-  g.gain.setValueAtTime(.08,now);
+  osc.type='sine'; osc.frequency.setValueAtTime(660,now);
+  osc.frequency.exponentialRampToValueAtTime(330,now+.06);
+  g.gain.setValueAtTime(.06,now);
   g.gain.exponentialRampToValueAtTime(.001,now+.07);
   osc.connect(g); g.connect(masterGain);
   osc.start(now); osc.stop(now+.08);
 }
 
-// Son line clear (accord ascendant)
 function sndLineClear(n){
   if(!audioCtx) return;
-  const chord=n>=4?[523,659,784,1047]:[523,659,784];
-  chord.forEach((hz,i)=>{
-    const now=audioCtx.currentTime+i*.04;
+  const freqs = n>=4 ? [523,659,784,1047] : [523,659,784];
+  freqs.forEach((hz,i)=>{
+    const now=audioCtx.currentTime+i*.05;
     const osc=audioCtx.createOscillator();
     const g=audioCtx.createGain();
     osc.type='triangle'; osc.frequency.value=hz;
-    g.gain.setValueAtTime(.12,now);
+    g.gain.setValueAtTime(.1,now);
     g.gain.exponentialRampToValueAtTime(.001,now+.3);
     osc.connect(g); g.connect(masterGain);
     osc.start(now); osc.stop(now+.35);
   });
 }
 
-// Son game over
 function sndGameOver(){
   if(!audioCtx) return;
   [440,330,220,110].forEach((hz,i)=>{
@@ -877,7 +900,7 @@ function sndGameOver(){
     const osc=audioCtx.createOscillator();
     const g=audioCtx.createGain();
     osc.type='sawtooth'; osc.frequency.value=hz;
-    g.gain.setValueAtTime(.15,now);
+    g.gain.setValueAtTime(.12,now);
     g.gain.exponentialRampToValueAtTime(.001,now+.2);
     osc.connect(g); g.connect(masterGain);
     osc.start(now); osc.stop(now+.22);
@@ -1049,8 +1072,12 @@ function doLock(){
     // Message flash
     const lineMsg=['','LINE!','DOUBLE! +200','TRIPLE! +200','WAFFLE TETRIS!! +500'][Math.min(cleared,4)];
     const comboMsg = lineCombo>=2 ? `  COMBO ×${lineCombo}` : '';
-    showFlash(lineMsg + comboMsg, lineCombo>=3 ? '#ff2d9b' : C.am);
+    showFlash(lineMsg + comboMsg, lineCombo>=3 ? '#ff2d9b' : '#f5c842');
     sndLineClear(cleared);
+    // Miettes et éclats colorés
+    spawnFx(DW*0.5, GRID_TOP+GRID_H*0.5, '#f5c842', 20);
+    spawnFx(DW*0.25, GRID_TOP+GRID_H*0.5, '#e8855a', 6);
+    spawnFx(DW*0.75, GRID_TOP+GRID_H*0.5, '#d4a0e0', 6);
   } else {
     lineCombo=0; // reset combo si aucune ligne
     score+=10*currentLevel;
@@ -1067,6 +1094,7 @@ function checkLevel(){
   if(lv>currentLevel){
     currentLevel=lv;
     speedMult=Math.min(1.8, 1.0+(lv-1)*.1);
+    checkMusicTrack(); // switcher la piste si besoin
     if(musicOn) startBeat();
     const cfg=levelConfig(lv);
     let msg='';
@@ -1082,119 +1110,157 @@ function checkLevel(){
 
 // ── Cosmos background ────────────────────────────────────────
 // 3 couches d'étoiles (profondeur différente)
-const STAR_LAYERS = [
-  { count:60,  minR:0.4, maxR:0.8, speed:4,  alpha:0.5  }, // lointaines
-  { count:35,  minR:0.7, maxR:1.2, speed:10, alpha:0.75 }, // moyennes
-  { count:18,  minR:1.0, maxR:1.8, speed:20, alpha:1.0  }, // proches
-];
-const stars = [];
-
-// Nébuleuses : blobs colorés fixes (dessinés une seule fois sur offscreen)
+// ── CAFÉ DU FUTUR — fond cosmique avec gaufres ───────────────
+const WAFFLE_STARS = [];  // étoiles en forme de gaufre
+const STEAM_PUFFS  = [];  // vapeur qui monte
+const shootingStars = [];
+let cosmosPhase = 0;
+let moonY = 0;
 
 function initCosmos(){
-  // Générer les étoiles
-  stars.length = 0;
-  STAR_LAYERS.forEach((layer, li) => {
-    for(let i=0; i<layer.count; i++){
-      stars.push({
-        x: Math.random() * DW,
-        y: Math.random() * DH,
-        r: layer.minR + Math.random() * (layer.maxR - layer.minR),
-        speed: layer.speed,
-        alpha: layer.alpha * (0.6 + Math.random() * 0.4),
-        twinkle: Math.random() * Math.PI * 2, // phase aléatoire
-        layer: li,
-      });
-    }
-  });
+  WAFFLE_STARS.length = 0;
+  STEAM_PUFFS.length  = 0;
+  moonY = DH * 0.12;
 
-  // Générer la nébuleuse sur canvas offscreen (une seule fois)
-  nebulaCanvas = document.createElement('canvas');
-  nebulaCanvas.width  = Math.floor(DW * scale);
-  nebulaCanvas.height = Math.floor(DH * scale);
-  const nc = nebulaCanvas.getContext('2d');
+  // Petites étoiles classiques (fond)
+  for(let i=0; i<60; i++){
+    WAFFLE_STARS.push({
+      x: Math.random()*DW, y: Math.random()*DH,
+      r: 0.4 + Math.random()*0.8,
+      speed: 3 + Math.random()*8,
+      twinkle: Math.random()*Math.PI*2,
+      isWaffle: Math.random() < 0.12, // 12% = mini gaufres
+      alpha: 0.4 + Math.random()*0.6,
+    });
+  }
+  // Nuages de vapeur
+  for(let i=0; i<8; i++){
+    STEAM_PUFFS.push({
+      x: Math.random()*DW,
+      y: DH * (0.5 + Math.random()*0.5),
+      r: 15 + Math.random()*25,
+      vy: 8 + Math.random()*15,
+      alpha: 0.04 + Math.random()*0.06,
+      wobble: Math.random()*Math.PI*2,
+    });
+  }
+}
 
-  // 4 blobs nébuleuse
-  const nebulae = [
-    { x:.15, y:.25, rx:.35, ry:.28, color:'rgba(80,20,160,0.18)'  }, // violet sombre
-    { x:.78, y:.15, rx:.32, ry:.22, color:'rgba(0,80,140,0.14)'   }, // bleu nuit
-    { x:.55, y:.62, rx:.40, ry:.30, color:'rgba(120,0,80,0.12)'   }, // magenta sombre
-    { x:.25, y:.75, rx:.28, ry:.35, color:'rgba(0,60,100,0.10)'   }, // bleu profond
-  ];
-  nebulae.forEach(n => {
-    const grd = nc.createRadialGradient(
-      n.x * nebulaCanvas.width,  n.y * nebulaCanvas.height, 0,
-      n.x * nebulaCanvas.width,  n.y * nebulaCanvas.height,
-      n.rx * nebulaCanvas.width
-    );
-    grd.addColorStop(0,   n.color);
-    grd.addColorStop(0.5, n.color.replace(/[\d.]+\)$/, '0.06)'));
-    grd.addColorStop(1,   'rgba(0,0,0,0)');
-    nc.fillStyle = grd;
-    nc.beginPath();
-    nc.ellipse(
-      n.x * nebulaCanvas.width,  n.y * nebulaCanvas.height,
-      n.rx * nebulaCanvas.width, n.ry * nebulaCanvas.height,
-      0, 0, Math.PI * 2
-    );
-    nc.fill();
-  });
+function drawMiniWaffle(x, y, size, alpha){
+  // Mini gaufre pixelisée — grille croisillon
+  ctx.globalAlpha = alpha;
+  ctx.fillStyle = '#f5c842';
+  ctx.fillRect(x-size/2, y-size/2, size, size);
+  // Croisillons
+  ctx.fillStyle = 'rgba(180,100,0,0.5)';
+  const g = size/3;
+  for(let i=1; i<3; i++){
+    ctx.fillRect(x-size/2+g*i-0.5, y-size/2, 1, size);
+    ctx.fillRect(x-size/2, y-size/2+g*i-0.5, size, 1);
+  }
+  ctx.globalAlpha = 1;
 }
 
 function drawCosmos(dt){
-  // Fond noir espace
-  ctx.fillStyle = '#06040f';
-  ctx.fillRect(0, 0, DW, DH);
+  cosmosPhase += dt;
 
-  // Nébuleuse (dessinée à l'échelle)
-  if(nebulaCanvas){
-    ctx.save();
-    ctx.setTransform(1,0,0,1,0,0); // reset transform pour dessiner en pixels écran
-    ctx.drawImage(nebulaCanvas, 0, 0);
-    ctx.setTransform(scale,0,0,scale,0,0);
-    ctx.restore();
+  // Fond : nuit profonde chaude (bleu-violet vers brun cosmique)
+  const bgGrd = ctx.createLinearGradient(0,0,0,DH);
+  bgGrd.addColorStop(0,  '#08040f');
+  bgGrd.addColorStop(0.4,'#110820');
+  bgGrd.addColorStop(1,  '#1a0a08');
+  ctx.fillStyle = bgGrd;
+  ctx.fillRect(0,0,DW,DH);
+
+  // Lune dorée (cercle + reflet)
+  const moonX = DW * 0.78;
+  const moonR  = 28;
+  // Halo
+  const haloGrd = ctx.createRadialGradient(moonX,moonY,0,moonX,moonY,moonR*3);
+  haloGrd.addColorStop(0,   'rgba(245,180,50,0.12)');
+  haloGrd.addColorStop(0.5, 'rgba(245,180,50,0.05)');
+  haloGrd.addColorStop(1,   'rgba(0,0,0,0)');
+  ctx.fillStyle = haloGrd;
+  ctx.beginPath(); ctx.arc(moonX,moonY,moonR*3,0,Math.PI*2); ctx.fill();
+  // Corps lune
+  const moonGrd = ctx.createRadialGradient(moonX-moonR*0.3,moonY-moonR*0.3,0,moonX,moonY,moonR);
+  moonGrd.addColorStop(0, '#fff4cc');
+  moonGrd.addColorStop(0.6,'#f5c842');
+  moonGrd.addColorStop(1,  '#c88010');
+  ctx.fillStyle = moonGrd;
+  ctx.beginPath(); ctx.arc(moonX,moonY,moonR,0,Math.PI*2); ctx.fill();
+  // Texture gaufrier sur la lune
+  ctx.strokeStyle = 'rgba(180,100,0,0.25)';
+  ctx.lineWidth = 1;
+  const gs = moonR*0.45;
+  for(let i=-2;i<=2;i++){
+    ctx.beginPath(); ctx.moveTo(moonX+i*gs, moonY-moonR); ctx.lineTo(moonX+i*gs, moonY+moonR); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(moonX-moonR, moonY+i*gs); ctx.lineTo(moonX+moonR, moonY+i*gs); ctx.stroke();
   }
 
-  // Étoiles qui défilent vers le bas (défilement lent)
-  for(const s of stars){
+  // Nébuleuses caramel
+  const nebPos = [[0.2,0.3,80,'rgba(180,90,20,0.07)'],[0.7,0.5,100,'rgba(120,40,80,0.06)'],[0.4,0.7,70,'rgba(200,140,20,0.05)']];
+  for(const [nx,ny,nr,nc2] of nebPos){
+    const ng = ctx.createRadialGradient(nx*DW,ny*DH,0,nx*DW,ny*DH,nr);
+    ng.addColorStop(0, nc2); ng.addColorStop(1,'rgba(0,0,0,0)');
+    ctx.fillStyle=ng; ctx.beginPath(); ctx.arc(nx*DW,ny*DH,nr,0,Math.PI*2); ctx.fill();
+  }
+
+  // Étoiles + mini gaufres
+  for(const s of WAFFLE_STARS){
     s.y += s.speed * dt;
-    if(s.y > DH) { s.y = -2; s.x = Math.random() * DW; }
-    s.twinkle += dt * 2;
-    const tw = 0.6 + 0.4 * Math.sin(s.twinkle);
-    ctx.globalAlpha = s.alpha * tw;
-    ctx.fillStyle = s.layer === 2 ? '#e8f4ff' : s.layer === 1 ? '#c8dcff' : '#a0b8dd';
-    ctx.beginPath();
-    ctx.arc(s.x, s.y, s.r, 0, Math.PI * 2);
-    ctx.fill();
+    if(s.y > DH){ s.y=-4; s.x=Math.random()*DW; }
+    s.twinkle += dt * 1.5;
+    const tw = 0.6 + 0.4*Math.sin(s.twinkle);
+    if(s.isWaffle){
+      const sz = 4 + s.r * 2;
+      drawMiniWaffle(s.x, s.y, sz, s.alpha * tw);
+    } else {
+      ctx.globalAlpha = s.alpha * tw;
+      ctx.fillStyle = '#f5e0b0';
+      ctx.beginPath(); ctx.arc(s.x,s.y,s.r,0,Math.PI*2); ctx.fill();
+      ctx.globalAlpha = 1;
+    }
   }
-  ctx.globalAlpha = 1;
 
-  // Quelques étoiles filantes aléatoires
-  if(Math.random() < dt * 0.3){ // ~0.3 par seconde
+  // Vapeur qui monte
+  for(const p of STEAM_PUFFS){
+    p.y -= p.vy * dt;
+    p.wobble += dt * 0.8;
+    p.x += Math.sin(p.wobble) * 0.3;
+    p.r  += dt * 2;
+    p.alpha -= dt * 0.015;
+    if(p.y < -p.r || p.alpha <= 0){
+      p.y=DH*(0.6+Math.random()*0.4); p.x=Math.random()*DW;
+      p.r=15+Math.random()*20; p.alpha=0.04+Math.random()*0.05;
+    }
+    const sg = ctx.createRadialGradient(p.x,p.y,0,p.x,p.y,p.r);
+    sg.addColorStop(0,`rgba(255,240,200,${p.alpha})`);
+    sg.addColorStop(1,'rgba(255,240,200,0)');
+    ctx.fillStyle=sg; ctx.beginPath(); ctx.arc(p.x,p.y,p.r,0,Math.PI*2); ctx.fill();
+  }
+
+  // Étoiles filantes (traîne caramel)
+  if(Math.random() < dt * 0.25){
     shootingStars.push({
-      x: Math.random() * DW * 0.8,
-      y: Math.random() * DH * 0.4,
-      vx: 180 + Math.random() * 120,
-      vy: 60 + Math.random() * 40,
-      life: 1, len: 40 + Math.random() * 60,
+      x:Math.random()*DW*0.7, y:Math.random()*DH*0.3,
+      vx:160+Math.random()*100, vy:50+Math.random()*40,
+      life:1, len:50+Math.random()*40,
     });
   }
-  for(let i = shootingStars.length-1; i >= 0; i--){
-    const s = shootingStars[i];
-    s.x += s.vx * dt; s.y += s.vy * dt;
-    s.life -= dt * 3;
-    if(s.life <= 0){ shootingStars.splice(i,1); continue; }
-    ctx.globalAlpha = s.life * 0.7;
-    ctx.strokeStyle = '#ffffff';
-    ctx.lineWidth = 1;
+  for(let i=shootingStars.length-1;i>=0;i--){
+    const s=shootingStars[i];
+    s.x+=s.vx*dt; s.y+=s.vy*dt; s.life-=dt*2.5;
+    if(s.life<=0){shootingStars.splice(i,1);continue;}
+    ctx.globalAlpha=s.life*0.6;
+    ctx.strokeStyle='#f5c842'; ctx.lineWidth=1.5;
     ctx.beginPath();
-    ctx.moveTo(s.x, s.y);
-    ctx.lineTo(s.x - s.vx/s.vx*s.len * s.life, s.y - s.vy/s.vx*s.len * s.life);
+    ctx.moveTo(s.x,s.y);
+    ctx.lineTo(s.x-s.len*s.life,s.y-s.len*s.life*0.35);
     ctx.stroke();
   }
-  ctx.globalAlpha = 1;
+  ctx.globalAlpha=1;
 }
-const shootingStars = [];
 
 function draw(){
   // Fond selon skin actif
@@ -1228,17 +1294,17 @@ function draw(){
     }
   }
 
-  // Fond grille — légèrement plus sombre, teinte violette
-  ctx.fillStyle='rgba(8,4,22,0.82)';
+  // Fond grille — brun chaud translucide (moule à gaufres)
+  ctx.fillStyle='rgba(12,6,2,0.88)';
   ctx.fillRect(0,GRID_TOP,GRID_W,GRID_H);
 
-  // Grille interne — lignes fines bleutées
-  ctx.strokeStyle='rgba(100,80,200,0.15)'; ctx.lineWidth=.5;
+  // Croisillons gaufrier — dorés
+  ctx.strokeStyle='rgba(180,110,20,0.2)'; ctx.lineWidth=1;
   for(let c=1;c<COLS;c++){ ctx.beginPath(); ctx.moveTo(c*CELL,GRID_TOP); ctx.lineTo(c*CELL,GRID_TOP+GRID_H); ctx.stroke(); }
   for(let r=1;r<ROWS;r++){ ctx.beginPath(); ctx.moveTo(0,GRID_TOP+r*CELL); ctx.lineTo(GRID_W,GRID_TOP+r*CELL); ctx.stroke(); }
 
-  // Bordure
-  ctx.strokeStyle=C.vi; ctx.lineWidth=1.5;
+  // Bordure gaufrier dorée
+  ctx.strokeStyle='rgba(220,150,30,0.7)'; ctx.lineWidth=2;
   ctx.strokeRect(0,GRID_TOP,GRID_W,GRID_H);
 
   // Effets lignes (flash blanc sur les lignes en cours d'effacement)
@@ -1485,7 +1551,7 @@ canvas.addEventListener('touchstart',e=>{
   txS=p.x; pressStart=Date.now(); devZone(p);
   if(dbg.touch) document.getElementById('dbTXY').textContent=`${Math.round(p.x)},${Math.round(p.y)}`;
   if(gameState!=='playing') return;
-  initAudio(); if(audioCtx) audioCtx.resume().then(()=>{ if(!musicOn) startMusic(); });
+  initAudio(); if(!musicOn) startMusic();
   const n=Date.now();
   if(n-lastTap<280){ rotatePiece(); lastTap=0; pressStart=0; }
   else { lastTap=n; }
@@ -1506,7 +1572,7 @@ canvas.addEventListener('touchmove',e=>{
 canvas.addEventListener('mousedown',e=>{
   const p=xy(e.clientX,e.clientY); devZone(p); pressStart=Date.now();
   if(gameState!=='playing') return;
-  initAudio(); if(audioCtx) audioCtx.resume().then(()=>{ if(!musicOn) startMusic(); });
+  initAudio(); if(!musicOn) startMusic();
   const n=Date.now();
   if(n-lastTap<280){ rotatePiece(); lastTap=0; pressStart=0; }
   else { lastTap=n; }
@@ -1524,7 +1590,7 @@ document.addEventListener('keydown',e=>{
   if(e.key==='ArrowRight') moveRight();
   if(e.key==='ArrowDown') piece.vy=Math.min(piece.vy+3,MAX_FALL);
   if(e.key==='r'||e.key==='R') rotatePiece();
-  if(e.key==='m'||e.key==='M'){ if(musicOn) stopMusic(); else{initAudio();audioCtx.resume().then(startMusic);} }
+  if(e.key==='m'||e.key==='M'){ if(musicOn) stopMusic(); else{ initAudio(); startMusic(); } }
 });
 
 // ── Flash ────────────────────────────────────────────────────
@@ -1596,7 +1662,7 @@ function devTog(flag){
 
 function toggleMute(){
   if(musicOn){ stopMusic(); document.getElementById('btnMute').textContent='🔇'; }
-  else { initAudio(); if(audioCtx) audioCtx.resume().then(startMusic); document.getElementById('btnMute').textContent='🔊'; }
+  else { initAudio(); startMusic(); document.getElementById('btnMute').textContent='🔊'; }
 }
 
 // ── Leaderboard Supabase ─────────────────────────────────────
