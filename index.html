@@ -307,6 +307,7 @@ function gridOverflow(){ return grid.slice(0,BUFFER).some(r=>r.some(c=>c!==null)
 // lineEffects : tableau de { row, cells:[{c,color}], timer, maxTimer }
 const lineEffects=[];
 const dropFlashes=[]; // flash blanc quand une pièce se pose
+let shakeTimer=0, shakeMag=0; // screen shake
 
 function triggerLineEffect(fullRows){
   for(const r of fullRows){
@@ -339,8 +340,8 @@ function spawnPiece(){
   piece.cells=PIECES[key].cells.map(c=>[...c]);
   piece.color=PIECES[key].color;
   piece.col=Math.floor(COLS/2)-2;
-  piece.floatRow=-1.5;
-  piece.vy=-2.5; // légère impulsion vers le haut au spawn
+  piece.floatRow = gravityInverted ? ROWS+BUFFER-2 : -1.5;
+  piece.vy       = gravityInverted ? 0 : -2.5;
   piece.locked=false;
   piece.frozen=false; piece.freezeTimer=0;
   piece.pieceTimer = Math.max(8.0, PIECE_TIME_BASE - (currentLevel - 1) * 0.8);
@@ -362,15 +363,23 @@ function spawnPiece(){
 let GRAVITY=4.0;   // rows/s²
 let FLAP_V=-4.5;   // rows/s
 let MAX_FALL=14.0; // rows/s
+let shieldActive = false; // bouclier absorbé
 let speedMult=1.0;
 let godMode=false;
 
 // force = 0.0→1.0 selon durée pression (min 50ms → max 400ms)
 function flap(force=1.0){
   if(piece.locked) return;
-  const minV = FLAP_V * 0.35;  // petite pression : 35% de la force
-  const maxV = FLAP_V * 1.0;   // pression longue : 100%
-  piece.vy = minV + (maxV - minV) * force;
+  if(gravityInverted){
+    // En gravité inversée, le tap fait descendre
+    const minV =  Math.abs(FLAP_V) * 0.35;
+    const maxV =  Math.abs(FLAP_V) * 1.0;
+    piece.vy = minV + (maxV - minV) * force;
+  } else {
+    const minV = FLAP_V * 0.35;
+    const maxV = FLAP_V * 1.0;
+    piece.vy = minV + (maxV - minV) * force;
+  }
   spawnFx(piece.col*CELL+CELL, GRID_TOP+Math.max(0,piece.floatRow-BUFFER)*CELL, piece.color, Math.ceil(2+force*4));
   sndFlap();
 }
@@ -392,10 +401,12 @@ function levelConfig(lv){
 
 // Types de cubes disponibles par niveau
 function cubeTypes(lv){
-  const types = ['red'];
+  const types = ['red','red']; // rouge plus fréquent
   if(lv >= 2) types.push('white');
   if(lv >= 3) types.push('gravity');
   if(lv >= 4) types.push('freeze');
+  if(lv >= 1) types.push('shield'); // bouclier rare dès le début
+  if(lv >= 20) types.push('ghost');
   return types;
 }
 
@@ -408,10 +419,12 @@ function projDelay(lv){
 
 // ── Tutoriels par stage ──────────────────────────────────────
 const STAGE_TUTORIALS = {
-  1: { color:'#cc1100', border:'#880000', symbol:'×', symbolColor:'#ffffff', title:'CUBE ROUGE',   desc:'Touche = Game Over\nÉvite-les !' },
-  2: { color:'#d8eeff', border:'#88aaff', symbol:'+', symbolColor:'#2244cc', title:'CUBE BLANC',   desc:'Touche = Absorption\nFaçonne ta pièce !' },
-  3: { color:'#3322cc', border:'#6644ff', symbol:'⟳', symbolColor:'#ccbbff', title:'CUBE GRAVITÉ', desc:"T'attire vers lui\nRésiste !" },
-  4: { color:'#44aacc', border:'#aaddff', symbol:'❄', symbolColor:'#003355', title:'CUBE GELÉ',    desc:'Rotation bloquée 1.5s\nAnticipe !' },
+  1:  { color:'#cc1100', border:'#880000', symbol:'×', symbolColor:'#ffffff', title:'CUBE ROUGE',       desc:'Touche = Game Over\nÉvite-les !' },
+  2:  { color:'#d8eeff', border:'#88aaff', symbol:'+', symbolColor:'#2244cc', title:'CUBE BLANC',       desc:'Touche = Absorption\nFaçonne ta pièce !' },
+  3:  { color:'#3322cc', border:'#6644ff', symbol:'⟳', symbolColor:'#ccbbff', title:'CUBE GRAVITÉ',     desc:"T'attire vers lui\nRésiste !" },
+  4:  { color:'#44aacc', border:'#aaddff', symbol:'❄', symbolColor:'#003355', title:'CUBE GELÉ',        desc:'Rotation bloquée 1.5s\nAnticipe !' },
+  16: { color:'#ff8800', border:'#cc4400', symbol:'↑', symbolColor:'#ffffff', title:'GRAVITÉ INVERSÉE', desc:'Les pièces montent !\nTap = descendre maintenant' },
+  20: { color:'#cc22cc', border:'#ff88ff', symbol:'?', symbolColor:'#ffffff', title:'CUBE FANTÔME',     desc:'Disparaît 3s puis revient\nMémorise la trajectoire !' },
 };
 
 let tutorialShown = new Set();
@@ -553,6 +566,15 @@ function spawnProj(){
   } else if(isFreeze){
     projs.push({ type:'cube', subtype:'freeze',
       x:left?-CELL:DW, y:py, spd, dir:left?1:-1,
+      size:CELL, dead:false, hit:false, pending:true, warnTimer:2.0 });
+  } else if(chosenType==='ghost'){
+    projs.push({ type:'cube', subtype:'ghost',
+      x:left?-CELL:DW, y:py, spd, dir:left?1:-1,
+      size:CELL, dead:false, hit:false, pending:true, warnTimer:2.0,
+      ghostTimer:0, ghostVisible:true, ghostInterval:3.0 });
+  } else if(chosenType==='shield'){
+    projs.push({ type:'cube', subtype:'shield',
+      x:left?-CELL:DW, y:py, spd:spd*0.8, dir:left?1:-1,
       size:CELL, dead:false, hit:false, pending:true, warnTimer:2.0 });
   } else {
     projs.push({
@@ -1136,27 +1158,43 @@ function update(dt){
       piece.vy = MAX_FALL * speedMult;
     }
 
-    // Physique : a → v → pos
-    piece.vy=Math.min(piece.vy+GRAVITY*speedMult*dt, MAX_FALL*speedMult);
-    const newRow=piece.floatRow+piece.vy*dt;
-    const intNew=Math.floor(newRow);
-
-    if(canPlace(piece.cells,piece.col,intNew)){
-      piece.floatRow=newRow;
-    } else {
-      // Snapper à la dernière position entière valide — pas de dépassement visuel
-      let safeRow = Math.floor(piece.floatRow);
-      // Si la position actuelle est déjà invalide, remonter
-      while(safeRow > -BUFFER && !canPlace(piece.cells, piece.col, safeRow)) safeRow--;
-      piece.floatRow = safeRow; // entier exact, pas de fraction
-      piece.vy = 0;
-      // Posé sur quelque chose → lock immédiat
-      if(!canPlace(piece.cells, piece.col, safeRow + 1)){
-        doLock(); return;
+    // Physique : a → v → pos (gravité normale ou inversée)
+    if(gravityInverted){
+      // Gravité vers le HAUT — pièce monte, tap la fait descendre
+      piece.vy = Math.max(piece.vy - GRAVITY*speedMult*dt, -MAX_FALL*speedMult);
+      const newRow = piece.floatRow + piece.vy*dt;
+      const intNew = Math.floor(newRow);
+      if(canPlace(piece.cells, piece.col, intNew)){
+        piece.floatRow = newRow;
+      } else {
+        let safeRow = Math.floor(piece.floatRow);
+        while(safeRow < ROWS+BUFFER && !canPlace(piece.cells, piece.col, safeRow)) safeRow++;
+        piece.floatRow = safeRow;
+        piece.vy = 0;
+        if(!canPlace(piece.cells, piece.col, Math.floor(piece.floatRow) - 1)){
+          doLock(); return;
+        }
       }
+      // Plafond inversé = bas de la grille
+      if(piece.floatRow >= ROWS+BUFFER-1){ piece.floatRow=ROWS+BUFFER-2; piece.vy=0; }
+    } else {
+      piece.vy=Math.min(piece.vy+GRAVITY*speedMult*dt, MAX_FALL*speedMult);
+      const newRow=piece.floatRow+piece.vy*dt;
+      const intNew=Math.floor(newRow);
+      if(canPlace(piece.cells,piece.col,intNew)){
+        piece.floatRow=newRow;
+      } else {
+        let safeRow = Math.floor(piece.floatRow);
+        while(safeRow > -BUFFER && !canPlace(piece.cells, piece.col, safeRow)) safeRow--;
+        piece.floatRow = safeRow;
+        piece.vy = 0;
+        if(!canPlace(piece.cells, piece.col, safeRow + 1)){
+          doLock(); return;
+        }
+      }
+      // Plafond
+      if(piece.floatRow<-BUFFER){ piece.floatRow=-BUFFER; piece.vy=0; }
     }
-    // Plafond
-    if(piece.floatRow<-BUFFER){ piece.floatRow=-BUFFER; piece.vy=0; }
   }
 
   // Warnings et projectiles
@@ -1191,6 +1229,15 @@ function update(dt){
 
     proj.x += proj.spd * proj.dir * dt;
 
+    // Cube fantôme : alterner visible/invisible toutes les 3s
+    if(proj.subtype === 'ghost'){
+      proj.ghostTimer += dt;
+      if(proj.ghostTimer >= proj.ghostInterval){
+        proj.ghostTimer = 0;
+        proj.ghostVisible = !proj.ghostVisible;
+      }
+    }
+
     // Sortie écran
     const projW = proj.type==='cube' ? proj.size : (Math.max(...proj.cells.map(c=>c[0]))+1)*proj.cellSize;
     if(proj.x > DW+100 || proj.x < -100){ proj.dead=true; if(!proj.hit) cubesDodged++; continue; }
@@ -1199,11 +1246,14 @@ function update(dt){
     if(!piece.locked && !piece.invincible && !godMode){
       let hit=false;
       if(proj.type==='cube'){
+        // Hitbox réduite à 85% pour les cubes mortels (near-miss satisfaisant)
+        const isMortal = proj.subtype==='red' || proj.subtype==='ghost';
+        const shrink = isMortal ? proj.size * 0.075 : 0; // 7.5% de chaque côté = 85%
         for(const [dc,dr] of piece.cells){
-          const cx = (piece.col + dc) * CELL;
-          const cy = GRID_TOP + (piece.floatRow + dr - BUFFER) * CELL;
-          if(proj.x < cx+CELL && proj.x+proj.size > cx &&
-             proj.y < cy+CELL && proj.y+proj.size > cy){ hit=true; break; }
+          const cx = (piece.col+dc)*CELL;
+          const cy = GRID_TOP+(piece.floatRow+dr-BUFFER)*CELL;
+          if(proj.x+shrink < cx+CELL && proj.x+proj.size-shrink > cx &&
+             proj.y+shrink < cy+CELL && proj.y+proj.size-shrink > cy){ hit=true; break; }
         }
       } else {
         for(const [dc,dr] of piece.cells){
@@ -1225,6 +1275,7 @@ function update(dt){
           if(merged){
             spawnFx(proj.x + proj.size/2, proj.y + proj.size/2, '#e8f0ff', 10);
             showFlash('✚ FUSION!', '#e8f0ff');
+            shakeTimer=0.15; shakeMag=4;
           }
         } else if(proj.subtype === 'gravity'){
           proj.dead = true;
@@ -1239,13 +1290,38 @@ function update(dt){
           piece.freezeTimer = 1.5;
           spawnFx(proj.x+proj.size/2, proj.y+proj.size/2, '#aaddff', 14);
           showFlash('🧊 GELÉ!', '#aaddff');
+        } else if(proj.subtype === 'shield'){
+          proj.dead = true;
+          shieldActive = true;
+          spawnFx(proj.x+proj.size/2, proj.y+proj.size/2, '#44ff88', 14);
+          showFlash('🛡 BOUCLIER !', '#44ff88');
+          devLog('🛡 Bouclier actif','li');
+        } else if(proj.subtype === 'ghost'){
+          // Cube fantôme : game over (ou bouclier)
+          if(shieldActive){
+            shieldActive=false; proj.dead=true;
+            spawnFx(proj.x+proj.size/2,proj.y+proj.size/2,'#44ff88',20);
+            showFlash('🛡 BLOQUÉ !','#44ff88');
+          } else {
+            proj.dead=true; proj.hit=true;
+            spawnFx(proj.x+proj.size/2,proj.y+proj.size/2,'#ff44ff',16);
+            showFlash('👻 GAME OVER','#ff44ff');
+            sndGameOver(); stopMusic();
+            setTimeout(gameOver,600); return;
+          }
         } else {
-          // Cube rouge : game over
-          proj.dead=true; proj.hit=true;
-          spawnFx(proj.x+projW/2, proj.y+20, C.mg, 16);
-          showFlash('💥 GAME OVER', C.mg);
-          sndGameOver(); stopMusic();
-          setTimeout(gameOver, 600); return;
+          // Cube rouge : game over (ou bouclier)
+          if(shieldActive){
+            shieldActive=false; proj.dead=true;
+            spawnFx(proj.x+projW/2,proj.y+20,'#44ff88',20);
+            showFlash('🛡 BLOQUÉ !','#44ff88');
+          } else {
+            proj.dead=true; proj.hit=true;
+            spawnFx(proj.x+projW/2,proj.y+20,C.mg,16);
+            showFlash('💥 GAME OVER',C.mg);
+            sndGameOver(); stopMusic();
+            setTimeout(gameOver,600); return;
+          }
         }
       }
     }
@@ -1257,11 +1333,12 @@ function update(dt){
     lineEffects[i].timer-=dt;
     if(lineEffects[i].timer<=0) lineEffects.splice(i,1);
   }
-  // Drop flashes
+  // Drop flashes + screen shake
   for(let i=dropFlashes.length-1;i>=0;i--){
     dropFlashes[i].timer-=dt;
     if(dropFlashes[i].timer<=0) dropFlashes.splice(i,1);
   }
+  if(shakeTimer>0) shakeTimer-=dt;
 
   // Particules
   for(let i=particles.length-1;i>=0;i--){
@@ -1332,6 +1409,8 @@ function doLock(){
     spawnFx(DW*0.5, GRID_TOP+GRID_H*0.5, '#f5c842', 20);
     spawnFx(DW*0.25, GRID_TOP+GRID_H*0.5, '#e8855a', 6);
     spawnFx(DW*0.75, GRID_TOP+GRID_H*0.5, '#d4a0e0', 6);
+    // Screen shake selon nombre de lignes
+    shakeTimer=0.3; shakeMag=cleared>=4?12:cleared>=2?7:4;
   } else {
     lineCombo=0; // reset combo si aucune ligne
     score+=10*currentLevel;
@@ -1343,7 +1422,23 @@ function doLock(){
   setTimeout(spawnPiece,300);
 }
 
-// checkLevel défini plus haut (toutes les 5 lignes)
+function checkLevel(){
+  const lv = Math.floor(lines / 5) + 1;
+  if(lv > currentLevel){
+    currentLevel = lv;
+    speedMult = Math.min(1.8, 1.0 + (lv-1) * 0.08);
+    checkMusicTrack();
+    showFlash(`STAGE ${lv}`, '#f5a623');
+    showStageTutorial(lv);
+    // Gravité inversée au niveau 16
+    if(lv === 16){
+      gravityInverted = true;
+      // Effet visuel — flash orange + flip de la grille (simulation)
+      showFlash('⬆ GRAVITÉ INVERSÉE !', '#ff8800');
+    }
+    devLog(`⬆ Stage ${lv} speed:${speedMult.toFixed(2)} gravInv:${gravityInverted}`,'lw');
+  }
+}
 
 // ── Cosmos background ────────────────────────────────────────
 // 3 couches d'étoiles (profondeur différente)
@@ -1500,12 +1595,19 @@ function drawCosmos(dt){
 }
 
 function draw(){
+  // Screen shake
+  let sx=0, sy=0;
+  if(shakeTimer>0){
+    const mag=shakeMag*(shakeTimer/0.3);
+    sx=(Math.random()-0.5)*mag; sy=(Math.random()-0.5)*mag;
+    ctx.setTransform(scale,0,0,scale,sx*scale,sy*scale);
+  }
   // Fond selon skin actif
   getActiveBgSkin().draw(lastDt);
 
   // ── Warning bords (clignotement avant arrivée d'un proj) ──
   // Fond grille — semi-transparent pour laisser voir les fonds débloqués
-  ctx.fillStyle='rgba(12,6,2,0.55)';
+  ctx.fillStyle='rgba(12,6,2,0.70)';
   ctx.fillRect(0,GRID_TOP,GRID_W,GRID_H);
 
   // Croisillons gaufrier — dorés
@@ -1513,8 +1615,19 @@ function draw(){
   for(let c=1;c<COLS;c++){ ctx.beginPath(); ctx.moveTo(c*CELL,GRID_TOP); ctx.lineTo(c*CELL,GRID_TOP+GRID_H); ctx.stroke(); }
   for(let r=1;r<ROWS;r++){ ctx.beginPath(); ctx.moveTo(0,GRID_TOP+r*CELL); ctx.lineTo(GRID_W,GRID_TOP+r*CELL); ctx.stroke(); }
 
-  // Bordure gaufrier dorée
-  ctx.strokeStyle='rgba(220,150,30,0.7)'; ctx.lineWidth=2;
+  // Bordure gaufrier — orange pulsant en gravité inversée, doré sinon
+  if(gravityInverted){
+    const pulse = 0.6 + 0.4*Math.sin(frameCount*0.1);
+    ctx.strokeStyle=`rgba(255,140,0,${pulse})`; ctx.lineWidth=3;
+    // Flèches ↑ aux coins pour signaler la gravité inversée
+    ctx.fillStyle=`rgba(255,140,0,${pulse*0.8})`;
+    ctx.font='bold 14px monospace'; ctx.textAlign='center';
+    ctx.fillText('↑ ↑ ↑', DW/2, GRID_TOP+GRID_H-8);
+    ctx.fillText('↑ ↑ ↑', DW/2, GRID_TOP+16);
+    ctx.textAlign='left';
+  } else {
+    ctx.strokeStyle='rgba(220,150,30,0.7)'; ctx.lineWidth=2;
+  }
   ctx.strokeRect(0,GRID_TOP,GRID_W,GRID_H);
 
   // ── Warning bords (dessiné APRÈS le fond pour être visible) ──
@@ -1709,7 +1822,33 @@ function draw(){
         ctx.textAlign='left'; ctx.textBaseline='alphabetic';
         ctx.strokeStyle='rgba(100,80,255,0.8)'; ctx.lineWidth=1.5;
         ctx.beginPath(); ctx.roundRect(proj.x+.5,proj.y+.5,proj.size-1,proj.size-1,r); ctx.stroke();
-      } else if(proj.subtype==='freeze'){
+      } else if(proj.subtype==='ghost'){
+        const rg = proj.size*0.2;
+        const alpha = proj.ghostVisible ? 0.9 : 0.12;
+        ctx.globalAlpha = alpha;
+        const gg=ctx.createLinearGradient(proj.x,proj.y,proj.x+proj.size,proj.y+proj.size);
+        gg.addColorStop(0,'#ff88ff'); gg.addColorStop(0.5,'#cc22cc'); gg.addColorStop(1,'#880088');
+        ctx.fillStyle=gg;
+        ctx.beginPath(); ctx.roundRect(proj.x,proj.y,proj.size,proj.size,rg); ctx.fill();
+        ctx.fillStyle='rgba(255,200,255,0.4)';
+        ctx.fillRect(proj.x+2,proj.y+2,proj.size*0.5,proj.size*0.2);
+        ctx.fillStyle='rgba(255,255,255,0.8)';
+        ctx.font=`900 ${Math.floor(proj.size*0.45)}px Arial`;
+        ctx.textAlign='center'; ctx.textBaseline='middle';
+        ctx.fillText('?',proj.x+proj.size/2,proj.y+proj.size/2+1);
+        ctx.textAlign='left'; ctx.textBaseline='alphabetic';
+        ctx.strokeStyle='rgba(255,100,255,0.8)'; ctx.lineWidth=1.5;
+        ctx.beginPath(); ctx.roundRect(proj.x+.5,proj.y+.5,proj.size-1,proj.size-1,rg); ctx.stroke();
+        ctx.globalAlpha=1;
+        if(!proj.ghostVisible){
+          ctx.setLineDash([4,6]);
+          ctx.strokeStyle='rgba(255,100,255,0.25)'; ctx.lineWidth=1;
+          ctx.beginPath();
+          ctx.moveTo(proj.x+proj.size/2, proj.y+proj.size/2);
+          ctx.lineTo(proj.dir===1 ? DW : 0, proj.y+proj.size/2);
+          ctx.stroke();
+          ctx.setLineDash([]);
+        }
         // Cube gel — cyan glacé
         const r=proj.size*0.2;
         const g=ctx.createLinearGradient(proj.x,proj.y,proj.x+proj.size,proj.y+proj.size);
@@ -1725,8 +1864,25 @@ function draw(){
         ctx.textAlign='left'; ctx.textBaseline='alphabetic';
         ctx.strokeStyle='rgba(100,220,255,0.8)'; ctx.lineWidth=1.5;
         ctx.beginPath(); ctx.roundRect(proj.x+.5,proj.y+.5,proj.size-1,proj.size-1,r); ctx.stroke();
+      } else if(proj.subtype==='shield'){
+        // Cube bouclier — vert brillant pulsant
+        const rs=proj.size*0.2;
+        const pulse=0.85+0.15*Math.sin(frameCount*0.2);
+        const gs=ctx.createLinearGradient(proj.x,proj.y,proj.x+proj.size,proj.y+proj.size);
+        gs.addColorStop(0,'#88ffaa'); gs.addColorStop(0.5,'#22cc55'); gs.addColorStop(1,'#006622');
+        ctx.fillStyle=gs; ctx.globalAlpha=pulse;
+        ctx.beginPath(); ctx.roundRect(proj.x,proj.y,proj.size,proj.size,rs); ctx.fill();
+        ctx.fillStyle='rgba(255,255,255,0.5)';
+        ctx.fillRect(proj.x+2,proj.y+2,proj.size*0.45,proj.size*0.2);
+        ctx.fillStyle='rgba(0,60,20,0.9)';
+        ctx.font=`900 ${Math.floor(proj.size*0.55)}px Arial`;
+        ctx.textAlign='center'; ctx.textBaseline='middle';
+        ctx.fillText('🛡',proj.x+proj.size/2,proj.y+proj.size/2+2);
+        ctx.textAlign='left'; ctx.textBaseline='alphabetic';
+        ctx.strokeStyle=`rgba(80,255,120,${pulse})`; ctx.lineWidth=2;
+        ctx.beginPath(); ctx.roundRect(proj.x+.5,proj.y+.5,proj.size-1,proj.size-1,rs); ctx.stroke();
+        ctx.globalAlpha=1;
       } else {
-        // Pièce projectile
       const cs=proj.cellSize;
       for(const [pc,pr] of proj.cells){
         drawCell(proj.x+pc*cs, proj.y+pr*cs, cs, proj.color);
@@ -1787,6 +1943,14 @@ function draw(){
       ctx.fillText(secs + 's', DW/2, barY - 2);
       ctx.textAlign = 'left';
     }
+    // Indicateur bouclier actif
+    if(shieldActive){
+      const sp=0.7+0.3*Math.sin(frameCount*0.25);
+      ctx.globalAlpha=sp;
+      ctx.font='16px monospace'; ctx.textAlign='right';
+      ctx.fillText('🛡', DW-4, barY-2);
+      ctx.textAlign='left'; ctx.globalAlpha=1;
+    }
   }
   for(const p of particles){
     ctx.globalAlpha=Math.max(0,p.life);
@@ -1796,6 +1960,8 @@ function draw(){
   ctx.globalAlpha=1;
 
   if(dbg.fps){ ctx.fillStyle=C.gn; ctx.font='bold 11px monospace'; ctx.fillText(`FPS:${fps}`,4,DH-4); }
+  // Rétablir le transform après shake
+  if(shakeTimer>0) ctx.setTransform(scale,0,0,scale,0,0);
 }
 
 function drawCell(x,y,cs,color){
@@ -1820,7 +1986,7 @@ function gameLoop(ts){
 function startGame(){
   score=0; lines=0; currentLevel=1; speedMult=1.0;
   stopMusic();
-  cubeEnabled=true; projAccum=0; godMode=false;
+  cubeEnabled=true; projAccum=0; godMode=false; gravityInverted=false; shieldActive=false;
   totalPieces=0; bestClear=0; cubesDodged=0; bestCombo=0; lineCombo=0;
   sessionAch.clear(); tutorialShown.clear(); tutorialPause=false;
   projs.length=0; particles.length=0; lineEffects.length=0; dropFlashes.length=0;
@@ -2000,7 +2166,7 @@ function devCheat(n){
     case 'noObs': cubeEnabled=!cubeEnabled; projs.length=0; devLog('🚫 Projs:'+cubeEnabled,'lw'); break;
     case 'slow': speedMult=.3; GRAVITY=.4; devLog('🐢','lw'); break;
     case 'fast': speedMult=2; GRAVITY=3; devLog('⚡','lw'); break;
-    case 'lvl': lines=currentLevel*10; checkLevel(); updateHUD(); devLog('⏭ Niv.'+currentLevel,'li'); break;
+    case 'lvl': lines=(currentLevel)*5; checkLevel(); updateHUD(); devLog('⏭ Stage '+currentLevel,'li'); break;
     case 'hs': highScore=0; localStorage.removeItem('td_hs'); devLog('🗑 Reset','lw'); break;
   }
 }
