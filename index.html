@@ -1640,14 +1640,22 @@ function draw(){
       const blinkSpeed = 0.15 + urgency * 0.45;
       const blink = Math.sin(frameCount * blinkSpeed * Math.PI) > 0 ? 1 : 0.15;
       const alpha = (0.12 + urgency * 0.22) * blink;
-      const obj = { alpha, isWhite: p.subtype === 'white' };
+      const obj = { alpha, subtype: p.subtype };
       if(p.dir === 1)  { if(!warnLeft  || alpha > warnLeft.alpha)  warnLeft  = obj; }
       if(p.dir === -1) { if(!warnRight || alpha > warnRight.alpha) warnRight = obj; }
     }
 
     function drawWarn(x1, x2, info){
       if(!info || info.alpha <= 0) return;
-      const color = info.isWhite ? '140,180,255' : '255,30,30';
+      const colorMap = {
+        white:   '140,180,255', // bleu
+        shield:  '60,220,100',  // vert
+        gravity: '100,80,255',  // violet
+        freeze:  '80,200,240',  // cyan
+        ghost:   '220,80,220',  // rose
+        red:     '255,30,30',   // rouge
+      };
+      const color = colorMap[info.subtype] || '255,30,30';
       const grd = ctx.createLinearGradient(x1, 0, x2, 0);
       grd.addColorStop(0, `rgba(${color},${info.alpha})`);
       grd.addColorStop(1, `rgba(${color},0)`);
