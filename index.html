@@ -330,12 +330,13 @@ function triggerLineEffect(fullRows){
 // ── Pièce active ────────────────────────────────────────────
 const piece={
   cells:[],color:'',col:0,
-  floatRow:-1.5,  // rows (float)
-  vy:0,           // rows/seconde
-  locked:false,
+  floatRow:-1.5,
+  vy:0,
+  locked:true, // true jusqu'au premier spawnPiece()
   invincible:false,
   invTimer:0,
-  pieceTimer:12.0, // secondes restantes pour poser ce bloc
+  frozen:false, freezeTimer:0,
+  pieceTimer:12.0,
 };
 const PIECE_TIME_BASE = 20.0; // secondes niveau 1
 let nextKey=PKEYS[Math.floor(Math.random()*PKEYS.length)];
@@ -443,9 +444,9 @@ function showStageTutorial(lv){
   if(tutorialShown.has(lv)) return;
   tutorialShown.add(lv);
 
-  // Le tuto bouclier ('1b') s'affiche sans pause
-  const noP = lv === '1b';
-  if(!noP) tutorialPause = true;
+  // Le tuto bouclier ('1b') pause aussi mais brièvement
+  const noP = false; // tous les tutos pausent
+  tutorialPause = true;
 
   const t = STAGE_TUTORIALS[lv];
   const el = document.createElement('div');
@@ -464,7 +465,7 @@ function showStageTutorial(lv){
     <div style="font-size:9px;color:#c8a060;letter-spacing:3px;margin-bottom:4px">STAGE ${lv} — NOUVEAU CUBE</div>
     <div style="font-size:18px;font-weight:900;color:#f5a623;text-shadow:0 0 10px #f5a623;letter-spacing:1px;margin-bottom:10px">${t.title}</div>
     <div style="font-size:13px;color:#ffe8c0;line-height:1.7;white-space:pre-line">${t.desc}</div>
-    <div style="font-size:9px;color:#888;margin-top:12px;letter-spacing:2px">REPRISE DANS 3s</div>
+    <div style="font-size:9px;color:#888;margin-top:12px;letter-spacing:2px">REPRISE DANS 2s</div>
   `;
   document.getElementById('gc').appendChild(el);
   setTimeout(()=> el.style.transform='translate(-50%,-50%) scale(1)', 30);
@@ -498,19 +499,30 @@ function showStageTutorial(lv){
   }
 
   // Compte à rebours
-  let remaining = 3;
-  const countdown = setInterval(()=>{
-    remaining--;
-    const cd = el.querySelector('div:last-child');
-    if(cd) cd.textContent = remaining > 0 ? `REPRISE DANS ${remaining}s` : 'GO !';
-    if(remaining <= 0){
-      clearInterval(countdown);
+  // Compte à rebours uniquement pour les tutos avec pause
+  if(!noP){
+    let remaining = 2;
+    const countdown = setInterval(()=>{
+      remaining--;
+      const cd = el.querySelector('div:last-child');
+      if(cd) cd.textContent = remaining > 0 ? `REPRISE DANS ${remaining}s` : 'GO !';
+      if(remaining <= 0){
+        clearInterval(countdown);
+        el.style.transition = 'transform .3s ease-in, opacity .3s';
+        el.style.transform = 'translate(-50%,-50%) scale(0.8)';
+        el.style.opacity = '0';
+        setTimeout(()=>{ el.remove(); tutorialPause = false; }, 350);
+      }
+    }, 1000);
+  } else {
+    // Tuto sans pause : disparaît après 1.5s
+    setTimeout(()=>{
       el.style.transition = 'transform .3s ease-in, opacity .3s';
       el.style.transform = 'translate(-50%,-50%) scale(0.8)';
       el.style.opacity = '0';
-      setTimeout(()=>{ el.remove(); if(!noP) tutorialPause = false; }, 350);
-    }
-  }, 1000);
+      setTimeout(()=> el.remove(), 350);
+    }, 1500);
+  }
 }
 
 function checkLevel(){
@@ -988,7 +1000,7 @@ let gravityCubesHit=0, iceBreaker=false, iceBreakerTimer=0;
 
 function checkAchievements(){
   // Bloquer les succès pendant les 8 premières secondes (tutos en cours)
-  if(frameCount < 480) return; // ~8s à 60fps
+  if(frameCount < 480) return; // ~8s — laisse passer les deux tutos
   for(const a of ACHIEVEMENTS){
     if(!unlockedAch.has(a.id) && a.cond()){
       unlockedAch.add(a.id);
@@ -1216,7 +1228,7 @@ function update(dt){
   if(fpsAccum>=.5){ fps=Math.round(fpsFrames/fpsAccum); fpsAccum=fpsFrames=0; }
 
   // Pièce
-  if(!piece.locked){
+  if(!piece.locked && piece.cells && piece.cells.length){
     if(piece.invincible){ piece.invTimer-=dt; if(piece.invTimer<=0) piece.invincible=false; }
     if(piece.frozen){ piece.freezeTimer-=dt; if(piece.freezeTimer<=0){ piece.frozen=false; } }
     if(iceBreakerTimer > 0) iceBreakerTimer -= dt;
@@ -1797,7 +1809,7 @@ function draw(){
   ctx.globalAlpha=1;
 
   // Ghost
-  if(!piece.locked&&gameState==='playing'){
+  if(!piece.locked&&gameState==='playing'&&piece.cells.length){
     let gr=Math.max(Math.floor(piece.floatRow), -BUFFER);
     while(canPlace(piece.cells,piece.col,gr+1)) gr++;
     ctx.globalAlpha=.15;
@@ -1809,7 +1821,7 @@ function draw(){
   }
 
   // Pièce active
-  if(!piece.locked&&gameState==='playing'){
+  if(!piece.locked&&gameState==='playing'&&piece.cells.length){
 
     // ── Traînée (trail) quand vy rapide ──────────────────────
     const absVy = Math.abs(piece.vy);
@@ -2052,7 +2064,7 @@ function startGame(){
   initCosmos();
   initBgParticles();
   nextKey=PKEYS[Math.floor(Math.random()*PKEYS.length)];
-  spawnPiece();
+  // spawnPiece() appelé après le tuto stage 1
   updateHUD();
   document.getElementById('sTit').classList.add('hidden');
   document.getElementById('sOver').classList.add('hidden');
@@ -2066,9 +2078,9 @@ function startGame(){
   if(audioCtx) audioCtx.resume().then(startMusic);
   devLog('▶ Partie','li');
   requestAnimationFrame(gameLoop);
-  // Tutos échelonnés : rouge d'abord, bouclier après
-  setTimeout(()=> showStageTutorial(1),   800);
-  setTimeout(()=> showStageTutorial('1b'), 5500); // après que le tuto rouge soit fini
+  showStageTutorial(1);                            // tuto rouge, 2s pause
+  setTimeout(()=> showStageTutorial('1b'), 2400);  // tuto vert enchaîné (2s aussi)
+  setTimeout(()=> spawnPiece(), 4600);             // pièce après les deux
 }
 
 function gameOver(){
