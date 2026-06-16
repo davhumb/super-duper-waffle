@@ -1874,7 +1874,6 @@ function draw(){
         ctx.strokeStyle='rgba(100,220,255,0.8)'; ctx.lineWidth=1.5;
         ctx.beginPath(); ctx.roundRect(proj.x+.5,proj.y+.5,proj.size-1,proj.size-1,r); ctx.stroke();
       } else if(proj.subtype==='shield'){
-        // Cube bouclier — vert brillant pulsant
         const rs=proj.size*0.2;
         const pulse=0.85+0.15*Math.sin(frameCount*0.2);
         const gs=ctx.createLinearGradient(proj.x,proj.y,proj.x+proj.size,proj.y+proj.size);
@@ -1891,17 +1890,24 @@ function draw(){
         ctx.strokeStyle=`rgba(80,255,120,${pulse})`; ctx.lineWidth=2;
         ctx.beginPath(); ctx.roundRect(proj.x+.5,proj.y+.5,proj.size-1,proj.size-1,rs); ctx.stroke();
         ctx.globalAlpha=1;
+        // Label BOUCLIER sous le cube
+        ctx.fillStyle='#44ff88';
+        ctx.font=`bold 9px monospace`;
+        ctx.textAlign='center';
+        ctx.fillText('BOUCLIER', proj.x+proj.size/2, proj.y+proj.size+10);
+        ctx.textAlign='left';
       } else {
-      const cs=proj.cellSize;
-      for(const [pc,pr] of proj.cells){
-        drawCell(proj.x+pc*cs, proj.y+pr*cs, cs, proj.color);
+        // Pièce projectile
+        const cs=proj.cellSize;
+        for(const [pc,pr] of proj.cells){
+          drawCell(proj.x+pc*cs, proj.y+pr*cs, cs, proj.color);
+        }
+        if(dbg.hitbox){
+          ctx.strokeStyle='#ff0'; ctx.lineWidth=1;
+          for(const [pc,pr] of proj.cells)
+            ctx.strokeRect(proj.x+pc*cs,proj.y+pr*cs,cs,cs);
+        }
       }
-      if(dbg.hitbox){
-        ctx.strokeStyle='#ff0'; ctx.lineWidth=1;
-        for(const [pc,pr] of proj.cells)
-          ctx.strokeRect(proj.x+pc*cs,proj.y+pr*cs,cs,cs);
-      }
-    }
   }
 
   // Preview
