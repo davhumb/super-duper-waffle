@@ -518,17 +518,7 @@ function showStageTutorial(lv){
   }
 }
 
-function checkLevel(){
-  const lv = Math.floor(lines / 5) + 1; // niveau toutes les 5 lignes
-  if(lv > currentLevel){
-    currentLevel = lv;
-    speedMult = Math.min(1.8, 1.0 + (lv-1) * 0.08);
-    checkMusicTrack();
-    showFlash(`STAGE ${lv}`, '#f5a623');
-    showStageTutorial(lv);
-    devLog(`⬆ Stage ${lv} speed:${speedMult.toFixed(2)}`,'lw');
-  }
-}
+// checkLevel défini plus bas (avec gravité inversée niveau 16)
 
 function spawnProj(){
   if(!cubeEnabled) return;
@@ -2249,7 +2239,7 @@ function devCheat(n){
     case 'noObs': cubeEnabled=!cubeEnabled; projs.length=0; devLog('🚫 Projs:'+cubeEnabled,'lw'); break;
     case 'slow': speedMult=.3; GRAVITY=.4; devLog('🐢','lw'); break;
     case 'fast': speedMult=2; GRAVITY=3; devLog('⚡','lw'); break;
-    case 'lvl': lines=(currentLevel)*5; checkLevel(); updateHUD(); devLog('⏭ Stage '+currentLevel,'li'); break;
+    case 'lvl': lines=currentLevel*5; checkLevel(); updateHUD(); devLog('⏭ Stage '+currentLevel,'li'); break;
     case 'hs': highScore=0; localStorage.removeItem('td_hs'); devLog('🗑 Reset','lw'); break;
   }
 }
