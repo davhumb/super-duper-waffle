@@ -392,26 +392,41 @@ let cubeEnabled=true;
 
 // Retourne la config du niveau courant
 function levelConfig(lv){
-  const spd = Math.min(280, 80 + (lv-1) * 15);
-  if(lv >= 15) return { cubes:1, pieces:1, spd };
-  if(lv >= 10) return { cubes:0, pieces:1, spd };
-  if(lv >= 7)  return { cubes:3, pieces:0, spd };
-  if(lv >= 4)  return { cubes:2, pieces:0, spd };
+  // Niveau 16 : reset gravité inversée, vitesse lente, 1 cube
+  if(lv === 16) return { cubes:1, pieces:0, spd:90 };
+  // Niveau 17-20 : accélération progressive
+  if(lv >= 17 && lv <= 20){
+    const s = 90 + (lv-17)*25;
+    return { cubes:1, pieces:0, spd:s };
+  }
+  if(lv >= 21) return { cubes:1, pieces:1, spd:Math.min(280, 165+(lv-21)*15) };
+  const spd = Math.min(260, 80 + (lv-1) * 15);
+  if(lv >= 12) return { cubes:1, pieces:1, spd };  // pièces + cube
+  if(lv >= 9)  return { cubes:0, pieces:1, spd };  // pièces seulement
+  if(lv >= 6)  return { cubes:3, pieces:0, spd };  // 3 cubes
+  if(lv >= 4)  return { cubes:2, pieces:0, spd };  // 2 cubes
   return         { cubes:1, pieces:0, spd };
 }
 
 // Types de cubes disponibles par niveau
 function cubeTypes(lv){
-  const types = ['red','red']; // rouge plus fréquent
-  if(lv >= 2) types.push('white');
+  const types = ['red','red']; // rouge toujours plus fréquent
+  if(lv >= 2) types.push('white', 'shield');
   if(lv >= 3) types.push('gravity');
   if(lv >= 4) types.push('freeze');
-  if(lv >= 1) types.push('shield'); // bouclier rare dès le début
-  if(lv >= 20) types.push('ghost');
+  if(lv >= 8) types.push('ghost');
+  // Niveau 16+ : tous les types
+  if(lv >= 16){
+    ['white','gravity','freeze','ghost','shield'].forEach(t=>{
+      if(!types.includes(t)) types.push(t);
+    });
+  }
   return types;
 }
 
 function projDelay(lv){
+  if(lv === 16) return 3.5;
+  if(lv >= 17 && lv <= 20) return Math.max(1.5, 3.5 - (lv-17)*0.5);
   const cfg = levelConfig(lv);
   const total = cfg.cubes + cfg.pieces;
   const base = Math.max(1.2, 4.0 - (lv-1)*0.35);
@@ -421,12 +436,12 @@ function projDelay(lv){
 // ── Tutoriels par stage ──────────────────────────────────────
 const STAGE_TUTORIALS = {
   1:  { color:'#cc1100', border:'#880000', symbol:'×', symbolColor:'#ffffff', title:'CUBE ROUGE',       desc:'Touche = Game Over\nÉvite-les !' },
-  '1b':{ color:'#22cc55', border:'#44ff88', symbol:'🛡', symbolColor:'#003322', title:'CUBE VERT',      desc:'Touche = Bouclier\nAbsorbe le prochain rouge !' },
+  '1b':{ color:'#22cc55', border:'#44ff88', symbol:'🛡', symbolColor:'#003322', title:'CUBE VERT',     desc:'Touche = Bouclier\nAbsorbe le prochain rouge !' },
   2:  { color:'#d8eeff', border:'#88aaff', symbol:'+', symbolColor:'#2244cc', title:'CUBE BLANC',       desc:'Touche = Absorption\nFaçonne ta pièce !' },
   3:  { color:'#3322cc', border:'#6644ff', symbol:'⟳', symbolColor:'#ccbbff', title:'CUBE GRAVITÉ',     desc:"T'attire vers lui\nRésiste !" },
   4:  { color:'#44aacc', border:'#aaddff', symbol:'❄', symbolColor:'#003355', title:'CUBE GELÉ',        desc:'Rotation bloquée 1.5s\nAnticipe !' },
-  16: { color:'#ff8800', border:'#cc4400', symbol:'↑', symbolColor:'#ffffff', title:'GRAVITÉ INVERSÉE', desc:'Les pièces montent !\nTap = descendre maintenant' },
-  20: { color:'#cc22cc', border:'#ff88ff', symbol:'?', symbolColor:'#ffffff', title:'CUBE FANTÔME',     desc:'Disparaît 3s puis revient\nMémorise la trajectoire !' },
+  8:  { color:'#cc22cc', border:'#ff88ff', symbol:'?', symbolColor:'#ffffff', title:'CUBE FANTÔME',     desc:'Disparaît 3s puis revient\nMémorise la trajectoire !' },
+  16: { color:'#ff8800', border:'#cc4400', symbol:'↑', symbolColor:'#ffffff', title:'GRAVITÉ INVERSÉE', desc:'La grille est à l\'envers !\nTap = monter comme avant' },
 };
 
 let tutorialShown = new Set();
