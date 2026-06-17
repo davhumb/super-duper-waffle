@@ -347,8 +347,8 @@ function spawnPiece(){
   piece.cells=PIECES[key].cells.map(c=>[...c]);
   piece.color=PIECES[key].color;
   piece.col=Math.floor(COLS/2)-2;
-  piece.floatRow = gravityInverted ? ROWS+BUFFER-2 : -1.5;
-  piece.vy       = gravityInverted ? 0 : -2.5;
+  piece.floatRow = -1.5;
+  piece.vy       = -2.5;
   piece.locked=false;
   piece.frozen=false; piece.freezeTimer=0;
   piece.pieceTimer = Math.max(8.0, PIECE_TIME_BASE - (currentLevel - 1) * 0.8);
@@ -378,16 +378,9 @@ let godMode=false;
 // force = 0.0→1.0 selon durée pression (min 50ms → max 400ms)
 function flap(force=1.0){
   if(piece.locked) return;
-  if(gravityInverted){
-    // En gravité inversée, le tap fait descendre
-    const minV =  Math.abs(FLAP_V) * 0.35;
-    const maxV =  Math.abs(FLAP_V) * 1.0;
-    piece.vy = minV + (maxV - minV) * force;
-  } else {
-    const minV = FLAP_V * 0.35;
-    const maxV = FLAP_V * 1.0;
-    piece.vy = minV + (maxV - minV) * force;
-  }
+  const minV = FLAP_V * 0.35;
+  const maxV = FLAP_V * 1.0;
+  piece.vy = minV + (maxV - minV) * force;
   spawnFx(piece.col*CELL+CELL, GRID_TOP+Math.max(0,piece.floatRow-BUFFER)*CELL, piece.color, Math.ceil(2+force*4));
   sndFlap();
 }
@@ -1245,23 +1238,19 @@ function update(dt){
 
     // Physique : a → v → pos (gravité normale ou inversée)
     if(gravityInverted){
-      // Gravité vers le HAUT — pièce monte, tap la fait descendre
-      piece.vy = Math.max(piece.vy - GRAVITY*speedMult*dt, -MAX_FALL*speedMult);
-      const newRow = piece.floatRow + piece.vy*dt;
-      const intNew = Math.floor(newRow);
-      if(canPlace(piece.cells, piece.col, intNew)){
-        piece.floatRow = newRow;
+      // Même physique que normale — juste la grille est retournée visuellement
+      piece.vy=Math.min(piece.vy+GRAVITY*speedMult*dt, MAX_FALL*speedMult);
+      const newRow=piece.floatRow+piece.vy*dt;
+      const intNew=Math.floor(newRow);
+      if(canPlace(piece.cells,piece.col,intNew)){
+        piece.floatRow=newRow;
       } else {
-        let safeRow = Math.floor(piece.floatRow);
-        while(safeRow < ROWS+BUFFER && !canPlace(piece.cells, piece.col, safeRow)) safeRow++;
-        piece.floatRow = safeRow;
-        piece.vy = 0;
-        if(!canPlace(piece.cells, piece.col, Math.floor(piece.floatRow) - 1)){
-          doLock(); return;
-        }
+        let safeRow=Math.floor(piece.floatRow);
+        while(safeRow > -BUFFER && !canPlace(piece.cells,piece.col,safeRow)) safeRow--;
+        piece.floatRow=safeRow; piece.vy=0;
+        if(!canPlace(piece.cells,piece.col,safeRow+1)){ doLock(); return; }
       }
-      // Plafond inversé = bas de la grille
-      if(piece.floatRow >= ROWS+BUFFER-1){ piece.floatRow=ROWS+BUFFER-2; piece.vy=0; }
+      if(piece.floatRow<-BUFFER){ piece.floatRow=-BUFFER; piece.vy=0; }
     } else {
       piece.vy=Math.min(piece.vy+GRAVITY*speedMult*dt, MAX_FALL*speedMult);
       const newRow=piece.floatRow+piece.vy*dt;
@@ -1711,6 +1700,15 @@ function draw(){
   // Fond selon skin actif
   getActiveBgSkin().draw(lastDt);
 
+  // En gravité inversée : retourner la grille visuellement
+  if(gravityInverted){
+    ctx.save();
+    // Flip vertical centré sur la grille
+    ctx.translate(0, GRID_TOP + GRID_H);
+    ctx.scale(1, -1);
+    ctx.translate(0, -GRID_TOP);
+  }
+
   // ── Warning bords (clignotement avant arrivée d'un proj) ──
   // Fond grille — semi-transparent pour laisser voir les fonds débloqués
   ctx.fillStyle='rgba(12,6,2,0.70)';
@@ -1964,6 +1962,9 @@ function draw(){
       }
     }
   }
+
+  // Restaurer le contexte si gravité inversée
+  if(gravityInverted) ctx.restore();
 
   // Preview
   {
