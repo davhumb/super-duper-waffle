@@ -92,6 +92,7 @@ html,body{width:100%;height:100%;min-height:100dvh;background:var(--bg);overflow
 
   <!-- TITLE -->
   <div class="screen" id="sTit" style="background:url('https://raw.githubusercontent.com/davhumb/super-duper-waffle/refs/heads/main/landing.png') center/cover no-repeat;padding:0;">
+    <div style="position:absolute;top:0;left:0;right:0;bottom:0" onclick="tryStartTitleMusic()"></div>
     <div style="position:absolute;inset:0;background:linear-gradient(to bottom,rgba(0,0,0,0.1) 0%,rgba(0,0,0,0) 30%,rgba(0,0,0,0) 50%,rgba(10,5,2,0.88) 78%,rgba(10,5,2,0.97) 100%);pointer-events:none"></div>
     <!-- Titre centré -->
     <div style="position:absolute;top:50%;left:0;right:0;transform:translateY(-160%);text-align:center;padding:0 16px">
@@ -248,8 +249,15 @@ window.addEventListener('resize', ()=>{
 
 // Fullscreen API — se déclenche au premier tap
 // fullscreen non utilisé (bloqué dans certains contextes)
-document.addEventListener('touchstart', ()=>{ initAudio(); if(!musicOn && gameState==='title') startMusic(); }, {once:true});
-document.addEventListener('mousedown',  ()=>{ initAudio(); if(!musicOn && gameState==='title') startMusic(); }, {once:true});
+// Musique landing — démarre au premier tap sur l'écran titre
+function tryStartTitleMusic(){
+  if(!musicOn && gameState==='title'){
+    initAudio();
+    startMusic();
+  }
+}
+document.addEventListener('touchstart', tryStartTitleMusic, {once:true});
+document.addEventListener('mousedown',  tryStartTitleMusic, {once:true});
 
 // ── Palette ─────────────────────────────────────────────────
 const C={bg:'#0a0a0f',cy:'#00f5ff',mg:'#ff006e',am:'#ffd60a',
@@ -392,30 +400,57 @@ let cubeEnabled=true;
 
 // Retourne la config du niveau courant
 function levelConfig(lv){
-  // Niveau 16 : reset gravité inversée, vitesse lente, 1 cube
-  if(lv === 16) return { cubes:1, pieces:0, spd:90 };
-  // Niveau 17-20 : accélération progressive
-  if(lv >= 17 && lv <= 20){
-    const s = 90 + (lv-17)*25;
-    return { cubes:1, pieces:0, spd:s };
-  }
-  if(lv >= 21) return { cubes:1, pieces:1, spd:Math.min(280, 165+(lv-21)*15) };
-  const spd = Math.min(260, 80 + (lv-1) * 15);
-  if(lv >= 12) return { cubes:1, pieces:1, spd };  // pièces + cube
-  if(lv >= 9)  return { cubes:0, pieces:1, spd };  // pièces seulement
-  if(lv >= 6)  return { cubes:3, pieces:0, spd };  // 3 cubes
-  if(lv >= 4)  return { cubes:2, pieces:0, spd };  // 2 cubes
-  return         { cubes:1, pieces:0, spd };
+  // Vitesse de base progressive
+  const baseSpd = Math.min(300, 80 + (lv-1) * 12);
+
+  // ── Stages 1-8 : introduction des mécaniques ──
+  if(lv === 1)  return { cubes:1, pieces:0, spd:80  };
+  if(lv === 2)  return { cubes:1, pieces:0, spd:95  };
+  if(lv === 3)  return { cubes:1, pieces:0, spd:110 };
+  if(lv === 4)  return { cubes:2, pieces:0, spd:125 };
+  if(lv === 5)  return { cubes:2, pieces:0, spd:145 };
+  if(lv === 6)  return { cubes:3, pieces:0, spd:160 };
+  if(lv === 7)  return { cubes:3, pieces:0, spd:185 };
+  if(lv === 8)  return { cubes:3, pieces:0, spd:200 };
+
+  // ── Stages 9-11 : pièces Tetris ──
+  if(lv === 9)  return { cubes:0, pieces:1, spd:160 };
+  if(lv === 10) return { cubes:1, pieces:1, spd:175 };
+  if(lv === 11) return { cubes:2, pieces:1, spd:195 };
+
+  // ── Stage 12 : respiration ──
+  if(lv === 12) return { cubes:1, pieces:0, spd:120 };
+
+  // ── Stages 13-15 : montée en pression ──
+  if(lv === 13) return { cubes:2, pieces:0, spd:200 };
+  if(lv === 14) return { cubes:3, pieces:0, spd:220 };
+  if(lv === 15) return { cubes:3, pieces:1, spd:240 };
+
+  // ── Stage 16 : gravité inversée — reset lent ──
+  if(lv === 16) return { cubes:1, pieces:0, spd:90  };
+
+  // ── Stages 17-20 : gravité inversée qui monte ──
+  if(lv === 17) return { cubes:1, pieces:0, spd:120 };
+  if(lv === 18) return { cubes:2, pieces:0, spd:150 };
+  if(lv === 19) return { cubes:3, pieces:0, spd:180 };
+  if(lv === 20) return { cubes:1, pieces:1, spd:200 };
+
+  // ── Stages 21-25 : retour normal, enfer progressif ──
+  if(lv === 21) return { cubes:1, pieces:0, spd:240 };
+  if(lv === 22) return { cubes:2, pieces:1, spd:255 };
+  if(lv === 23) return { cubes:3, pieces:1, spd:265 };
+  if(lv === 24) return { cubes:3, pieces:1, spd:280 };
+  if(lv >= 25)  return { cubes:3, pieces:1, spd:300 };
+
+  return { cubes:1, pieces:0, spd:baseSpd };
 }
 
-// Types de cubes disponibles par niveau
 function cubeTypes(lv){
-  const types = ['red','red']; // rouge toujours plus fréquent
-  if(lv >= 2) types.push('white', 'shield');
-  if(lv >= 3) types.push('gravity');
-  if(lv >= 4) types.push('freeze');
-  if(lv >= 8) types.push('ghost');
-  // Niveau 16+ : tous les types
+  const types = ['red','red'];
+  if(lv >= 2)  types.push('white', 'shield');
+  if(lv >= 3)  types.push('gravity');
+  if(lv >= 4)  types.push('freeze');
+  if(lv >= 8)  types.push('ghost');
   if(lv >= 16){
     ['white','gravity','freeze','ghost','shield'].forEach(t=>{
       if(!types.includes(t)) types.push(t);
@@ -425,11 +460,15 @@ function cubeTypes(lv){
 }
 
 function projDelay(lv){
+  // Stage 12 respiration : délai généreux
+  if(lv === 12) return 3.0;
+  // Stage 16 reset : délai généreux
   if(lv === 16) return 3.5;
+  // Stages gravité inversée 17-20
   if(lv >= 17 && lv <= 20) return Math.max(1.5, 3.5 - (lv-17)*0.5);
   const cfg = levelConfig(lv);
   const total = cfg.cubes + cfg.pieces;
-  const base = Math.max(1.2, 4.0 - (lv-1)*0.35);
+  const base = Math.max(1.0, 4.0 - (lv-1)*0.28);
   return base / Math.max(1, total);
 }
 
@@ -441,7 +480,9 @@ const STAGE_TUTORIALS = {
   3:  { color:'#3322cc', border:'#6644ff', symbol:'⟳', symbolColor:'#ccbbff', title:'CUBE GRAVITÉ',     desc:"T'attire vers lui\nRésiste !" },
   4:  { color:'#44aacc', border:'#aaddff', symbol:'❄', symbolColor:'#003355', title:'CUBE GELÉ',        desc:'Rotation bloquée 1.5s\nAnticipe !' },
   8:  { color:'#cc22cc', border:'#ff88ff', symbol:'?', symbolColor:'#ffffff', title:'CUBE FANTÔME',     desc:'Disparaît 3s puis revient\nMémorise la trajectoire !' },
+  12: { color:'#f5a623', border:'#f5c842', symbol:'☕', symbolColor:'#ffffff', title:'PAUSE CAFÉ',       desc:'Respire...\nÇa va se corser !' },
   16: { color:'#ff8800', border:'#cc4400', symbol:'↑', symbolColor:'#ffffff', title:'GRAVITÉ INVERSÉE', desc:'La grille est à l\'envers !\nTap = monter comme avant' },
+  21: { color:'#f5a623', border:'#f5c842', symbol:'⬇', symbolColor:'#ffffff', title:'RETOUR À LA BASE', desc:'Gravité normale...\nMais plus rapide que jamais !' },
 };
 
 let tutorialShown = new Set();
@@ -1138,8 +1179,10 @@ function startMusicTrack(idx){
   if(!audioEl) audioEl = new Audio();
   audioEl.src = TRACKS[idx];
   audioEl.loop = true;
-  audioEl.volume = 0.4;
-  audioEl.play().catch(()=>{});
+  audioEl.volume = 0.25;
+  // Retry si bloqué par autoplay policy
+  const tryPlay = ()=> audioEl.play().catch(()=>{ if(musicOn) setTimeout(tryPlay, 600); });
+  tryPlay();
   document.getElementById('dbMu').textContent = `T${idx+1}`;
   devLog(`🎵 Track ${idx+1}: supa${idx+1}.mp3`,'li');
 }
@@ -1532,8 +1575,11 @@ function checkLevel(){
     // Gravité inversée au niveau 16
     if(lv === 16){
       gravityInverted = true;
-      // Effet visuel — flash orange + flip de la grille (simulation)
       showFlash('⬆ GRAVITÉ INVERSÉE !', '#ff8800');
+    }
+    if(lv === 21 && gravityInverted){
+      gravityInverted = false;
+      showFlash('⬇ GRAVITÉ NORMALE', '#f5a623');
     }
     devLog(`⬆ Stage ${lv} speed:${speedMult.toFixed(2)} gravInv:${gravityInverted}`,'lw');
     checkSkinUnlocks();
@@ -2083,7 +2129,8 @@ function startGame(){
   gameState='playing';
   lastTS=0;
   initAudio();
-  if(audioCtx) audioCtx.resume().then(startMusic);
+  if(audioCtx) audioCtx.resume();
+  startMusic();
   devLog('▶ Partie','li');
   requestAnimationFrame(gameLoop);
   showStageTutorial(1);                            // tuto rouge, 2s pause
