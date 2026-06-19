@@ -1306,8 +1306,15 @@ function update(dt){
       if(canPlace(piece.cells,piece.col,intNew)){
         piece.floatRow=newRow;
       } else {
+        // Trouver la dernière row valide — chercher depuis la position précédente
         let safeRow = Math.floor(piece.floatRow);
+        // Si position actuelle invalide, remonter
         while(safeRow > -BUFFER && !canPlace(piece.cells, piece.col, safeRow)) safeRow--;
+        // Si on a dépassé, chercher depuis la position précédente frame
+        if(!canPlace(piece.cells, piece.col, safeRow)){
+          safeRow = Math.floor(piece.floatRow - Math.abs(piece.vy) * 0.016) - 1;
+          while(safeRow > -BUFFER && !canPlace(piece.cells, piece.col, safeRow)) safeRow--;
+        }
         piece.floatRow = safeRow;
         piece.vy = 0;
         if(!canPlace(piece.cells, piece.col, safeRow + 1)){
@@ -1897,8 +1904,9 @@ function draw(){
 
     const alpha=piece.invincible?(Math.sin(frameCount*.25)>0?1:.3):1;
     ctx.globalAlpha=alpha;
+    const renderRow = piece.locked ? Math.floor(piece.floatRow) : piece.floatRow;
     for(const [dc,dr] of piece.cells){
-      const vr=piece.floatRow+dr-BUFFER;
+      const vr=renderRow+dr-BUFFER;
       if(vr>-1.8) drawCell((piece.col+dc)*CELL,GRID_TOP+vr*CELL,CELL,piece.color);
     }
     ctx.globalAlpha=1;
@@ -2129,8 +2137,8 @@ function startGame(){
   gameState='playing';
   lastTS=0;
   initAudio();
-  if(audioCtx) audioCtx.resume();
-  startMusic();
+  if(audioCtx) audioCtx.resume().then(()=> startMusic()).catch(()=> startMusic());
+  else startMusic();
   devLog('▶ Partie','li');
   requestAnimationFrame(gameLoop);
   showStageTutorial(1);                            // tuto rouge, 2s pause
