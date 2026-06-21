@@ -250,7 +250,26 @@ window.addEventListener('resize', ()=>{
 
 // Fullscreen API — se déclenche au premier tap
 // fullscreen non utilisé (bloqué dans certains contextes)
-// Musique landing — démarre au premier tap sur l'écran titre
+// Pause automatique si l'app perd le focus (appel, notification, home)
+window.addEventListener('blur', ()=>{
+  if(gameState === 'playing' && !tutorialPause){
+    tutorialPause = true;
+    showFlash('⏸ PAUSE', '#ffd60a');
+    stopMusic();
+    const resume = ()=>{
+      tutorialPause = false;
+      lastTS = 0; // reset delta-time pour éviter téléportation
+      if(!muted) startMusic();
+      showFlash('▶ GO !', '#44ff88');
+      window.removeEventListener('focus', resume);
+      canvas.removeEventListener('touchstart', resume);
+      canvas.removeEventListener('mousedown', resume);
+    };
+    window.addEventListener('focus', resume);
+    canvas.addEventListener('touchstart', resume, {once:true});
+    canvas.addEventListener('mousedown', resume, {once:true});
+  }
+});
 function tryStartTitleMusic(){
   if(!musicOn && gameState==='title'){
     initAudio();
@@ -1409,46 +1428,31 @@ function update(dt){
       piece.vy = MAX_FALL * speedMult;
     }
 
-    // Physique : a → v → pos (gravité normale ou inversée)
-    if(gravityInverted){
-      // Même physique que normale — juste la grille est retournée visuellement
-      piece.vy=Math.min(piece.vy+GRAVITY*speedMult*dt, MAX_FALL*speedMult);
-      const newRow=piece.floatRow+piece.vy*dt;
-      const intNew=Math.floor(newRow);
-      if(canPlace(piece.cells,piece.col,intNew)){
-        piece.floatRow=newRow;
-      } else {
-        let safeRow=Math.floor(piece.floatRow);
-        while(safeRow > -BUFFER && !canPlace(piece.cells,piece.col,safeRow)) safeRow--;
-        piece.floatRow=safeRow; piece.vy=0;
-        if(!canPlace(piece.cells,piece.col,safeRow+1)){ doLock(); return; }
+    // Physique : a → v → pos
+    piece.vy = Math.min(piece.vy + GRAVITY*speedMult*dt, MAX_FALL*speedMult);
+    const newRow = piece.floatRow + piece.vy * dt;
+
+    // Scanner chaque rangée entre position actuelle et nouvelle pour éviter de sauter par-dessus
+    let targetRow = Math.floor(newRow);
+    let blocked = false;
+    for(let r = Math.floor(piece.floatRow) + 1; r <= targetRow; r++){
+      if(!canPlace(piece.cells, piece.col, r)){
+        targetRow = r - 1; // s'arrêter une rangée avant le blocage
+        blocked = true;
+        break;
       }
-      if(piece.floatRow<-BUFFER){ piece.floatRow=-BUFFER; piece.vy=0; }
-    } else {
-      piece.vy=Math.min(piece.vy+GRAVITY*speedMult*dt, MAX_FALL*speedMult);
-      const newRow=piece.floatRow+piece.vy*dt;
-      const intNew=Math.floor(newRow);
-      if(canPlace(piece.cells,piece.col,intNew)){
-        piece.floatRow=newRow;
-      } else {
-        // Trouver la dernière row valide — chercher depuis la position précédente
-        let safeRow = Math.floor(piece.floatRow);
-        // Si position actuelle invalide, remonter
-        while(safeRow > -BUFFER && !canPlace(piece.cells, piece.col, safeRow)) safeRow--;
-        // Si on a dépassé, chercher depuis la position précédente frame
-        if(!canPlace(piece.cells, piece.col, safeRow)){
-          safeRow = Math.floor(piece.floatRow - Math.abs(piece.vy) * 0.016) - 1;
-          while(safeRow > -BUFFER && !canPlace(piece.cells, piece.col, safeRow)) safeRow--;
-        }
-        piece.floatRow = safeRow;
-        piece.vy = 0;
-        if(!canPlace(piece.cells, piece.col, safeRow + 1)){
-          doLock(); return;
-        }
-      }
-      // Plafond
-      if(piece.floatRow<-BUFFER){ piece.floatRow=-BUFFER; piece.vy=0; }
     }
+
+    if(!blocked && canPlace(piece.cells, piece.col, targetRow)){
+      piece.floatRow = newRow; // mouvement fluide
+    } else {
+      piece.floatRow = targetRow; // snap exact à la rangée valide
+      piece.vy = 0;
+      if(!canPlace(piece.cells, piece.col, targetRow + 1)){
+        doLock(); return;
+      }
+    }
+    if(piece.floatRow < -BUFFER){ piece.floatRow = -BUFFER; piece.vy = 0; }
   }
 
   // Warnings et projectiles
@@ -1729,10 +1733,12 @@ function checkLevel(){
     // Gravité inversée au niveau 16
     if(lv === 16){
       gravityInverted = true;
+      piece.vy = 0; piece.floatRow = -1.5; // reset position propre
       showFlash('⬆ GRAVITÉ INVERSÉE !', '#ff8800');
     }
     if(lv === 21 && gravityInverted){
       gravityInverted = false;
+      piece.vy = 0; piece.floatRow = -1.5; // reset position propre
       showFlash('⬇ GRAVITÉ NORMALE', '#f5a623');
     }
     devLog(`⬆ Stage ${lv} speed:${speedMult.toFixed(2)} gravInv:${gravityInverted}`,'lw');
